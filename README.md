@@ -45,6 +45,3 @@ This starter uses plain HTML, CSS, and Node.js so you can begin without installi
 - Maps/GPS provider for tracking.
 - OpenAI or Dialogflow for a richer chatbot.
 
-## About The Offer Letter
-
-Only you should sign the internship offer. I can help you understand the PDF, prepare a reply email, or create a checklist for scanning and sending it back.
