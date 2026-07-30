@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>HindCare Aggregator</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand-lockup">
+        <img src="/assets/hindcare-logo.png" alt="HindCare MedTech logo" class="brand-logo">
+        <div>
+          <p class="eyebrow">HindCare MedTech</p>
+          <h1>Emergency care dispatch dashboard</h1>
+          <p class="topbar-note">Phase 1 prototype</p>
+        </div>
+      </div>
+      <a class="emergency-link" href="#booking">Book Ambulance</a>
+    </header>
+
+    <main>
+      <section class="status-strip" aria-label="Platform snapshot">
+        <article class="stat-card stat-hospitals">
+          <span id="hospital-count">0</span>
+          <p>Hospitals</p>
+        </article>
+        <article class="stat-card stat-ambulances">
+          <span id="ambulance-count">0</span>
+          <p>Ambulances</p>
+        </article>
+        <article class="stat-card stat-bookings">
+          <span id="booking-count">0</span>
+          <p>Bookings</p>
+        </article>
+      </section>
+
+      <section class="workspace-grid">
+        <div class="panel" id="booking">
+          <div class="panel-heading">
+            <p class="eyebrow">Patient</p>
+            <h2>Ambulance booking</h2>
+          </div>
+          <form id="booking-form">
+            <label>
+              Patient name
+              <input name="patientName" placeholder="Manish Kumar" required>
+            </label>
+            <label>
+              Phone
+              <input name="phone" placeholder="+91-9876543210" required>
+            </label>
+            <label>
+              Pickup location
+              <input name="pickup" placeholder="Gomti Nagar, Lucknow" required>
+            </label>
+            <label>
+              Destination
+              <input name="destination" placeholder="HindCare Emergency Hospital" required>
+            </label>
+            <label>
+              Emergency type
+              <select name="emergencyType">
+                <option value="general">General emergency</option>
+                <option value="cardiac">Cardiac</option>
+                <option value="trauma">Trauma</option>
+                <option value="icu">ICU transfer</option>
+              </select>
+            </label>
+            <button type="submit">Create booking</button>
+          </form>
+          <p class="form-result" id="booking-result" role="status"></p>
+        </div>
+
+        <div class="panel">
+          <div class="panel-heading">
+            <p class="eyebrow">Hospitals</p>
+            <h2>Nearby emergency partners</h2>
+          </div>
+          <div class="list" id="hospital-list"></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-heading">
+            <p class="eyebrow">Fleet</p>
+            <h2>Ambulance status</h2>
+          </div>
+          <div class="list" id="ambulance-list"></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-heading">
+            <p class="eyebrow">Assistant</p>
+            <h2>Emergency chatbot</h2>
+          </div>
+          <form id="chatbot-form" class="chatbot-form">
+            <input name="message" placeholder="Book me an ambulance now" required>
+            <button type="submit">Send</button>
+          </form>
+          <div class="chat-reply" id="chatbot-reply"></div>
+        </div>
+      </section>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
