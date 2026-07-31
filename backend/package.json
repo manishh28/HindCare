@@ -1,0 +1,12 @@
+{
+  "name": "hindcare-aggregator-backend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "No-install starter API for the HindCare hospital and ambulance aggregator.",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
