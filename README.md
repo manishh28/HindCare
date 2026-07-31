@@ -71,21 +71,10 @@ frontend/   Patient, hospital, fleet, and admin demo screens
 
 See [`docs/api-docs.md`](docs/api-docs.md) for request and response examples.
 
-## Phase 1 Scope
-
-Phase 1 establishes the foundation for the platform:
-
-- Initial frontend and backend structure
-- Core hospital, ambulance, booking, and user data model
-- Mock APIs for the main workflows
-- Initial chatbot flow
-- Local demonstration and project documentation
-
-Live booking operations, GPS tracking, hospital onboarding, fleet-owner accounts, authentication, analytics, and deployment will be developed in later phases.
 
 ## Data and Security
 
-The current application uses temporary mock data stored in server memory. Do not add real patient information, medical details, live locations, API keys, or database credentials to this repository.
+The current application uses temporary mock data stored in server memory.
 
 Store private configuration in a local `.env` file or a deployment secret manager. The `.gitignore` file is configured to exclude environment files, local databases, exports, and uploads. Read [`docs/security-and-privacy.md`](docs/security-and-privacy.md) before connecting real services or personal data.
 
