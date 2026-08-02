@@ -50,6 +50,7 @@ CREATE TABLE bookings (
 CREATE TABLE chatbot_logs (
   id BIGSERIAL PRIMARY KEY,
   user_id BIGINT REFERENCES users(id),
+  session_id VARCHAR(80),
   message TEXT NOT NULL,
   intent VARCHAR(80),
   reply TEXT NOT NULL,
@@ -60,3 +61,4 @@ CREATE INDEX idx_hospitals_city ON hospitals(city);
 CREATE INDEX idx_ambulances_status ON ambulances(status);
 CREATE INDEX idx_bookings_status ON bookings(status);
 CREATE INDEX idx_bookings_created_at ON bookings(created_at);
+CREATE INDEX idx_chatbot_logs_session_id ON chatbot_logs(session_id);

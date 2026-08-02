@@ -61,6 +61,27 @@ Required JSON fields:
 
 Returns current bookings.
 
+### `GET /api/bookings/:id`
+
+Returns one booking by ID. This is used by the Phase 2 booking status workflow.
+
+Example response:
+
+```json
+{
+  "id": 1,
+  "patientName": "Manish Kumar",
+  "phone": "+91-9876543210",
+  "pickup": "Gomti Nagar, Lucknow",
+  "destination": "HindCare Emergency Hospital",
+  "emergencyType": "general",
+  "ambulanceId": 1,
+  "status": "assigned",
+  "notes": "",
+  "createdAt": "2026-07-31T06:30:00.000Z"
+}
+```
+
 ### `POST /api/bookings`
 
 Creates an ambulance booking.
@@ -69,11 +90,11 @@ Required JSON fields:
 
 - `patientName`
 - `phone`
-- `pickup`
-- `destination`
 
 Optional JSON fields:
 
+- `pickup`
+- `destination`
 - `emergencyType`
 - `notes`
 

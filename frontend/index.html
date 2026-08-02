@@ -16,8 +16,20 @@
           <p class="topbar-note">Phase 1 prototype</p>
         </div>
       </div>
-      <a class="emergency-link" href="#booking">Book Ambulance</a>
+      <div class="topbar-actions">
+        <label class="role-switcher">
+          <span>Demo role</span>
+          <select id="demo-role">
+            <option value="">Patient (no admin access)</option>
+            <option value="hospital">Hospital admin</option>
+            <option value="fleet">Fleet owner</option>
+            <option value="admin">Admin</option>
+          </select>
+        </label>
+        <a class="emergency-link" href="#booking">Book Ambulance</a>
+      </div>
     </header>
+    <p class="role-disclaimer">The role switcher is a demo-only preview of role-gated actions. It is not a login and does not verify identity — see docs/security-and-privacy.md.</p>
 
     <main>
       <section class="status-strip" aria-label="Platform snapshot">
@@ -52,11 +64,18 @@
             </label>
             <label>
               Pickup location
-              <input name="pickup" placeholder="Gomti Nagar, Lucknow" required>
+              <input name="pickup" list="known-areas" placeholder="Gomti Nagar, Lucknow" required>
+              <datalist id="known-areas">
+                <option value="Gomti Nagar, Lucknow">
+                <option value="SGPGI Road, Lucknow">
+                <option value="Mall Road, Kanpur">
+              </datalist>
             </label>
             <label>
-              Destination
-              <input name="destination" placeholder="HindCare Emergency Hospital" required>
+              Destination hospital
+              <select name="hospitalId" id="destination-select" required>
+                <option value="">Loading hospitals…</option>
+              </select>
             </label>
             <label>
               Emergency type
@@ -90,14 +109,22 @@
 
         <div class="panel">
           <div class="panel-heading">
+            <p class="eyebrow">Bookings</p>
+            <h2>Live booking board</h2>
+          </div>
+          <div class="list" id="booking-list"></div>
+        </div>
+
+        <div class="panel panel-wide">
+          <div class="panel-heading">
             <p class="eyebrow">Assistant</p>
             <h2>Emergency chatbot</h2>
           </div>
+          <div class="chat-transcript" id="chat-transcript" aria-live="polite"></div>
           <form id="chatbot-form" class="chatbot-form">
-            <input name="message" placeholder="Book me an ambulance now" required>
+            <input name="message" placeholder="Book me an ambulance now" required autocomplete="off">
             <button type="submit">Send</button>
           </form>
-          <div class="chat-reply" id="chatbot-reply"></div>
         </div>
       </section>
     </main>
