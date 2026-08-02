@@ -8,11 +8,13 @@ The prototype demonstrates the main workflow: a patient submits an ambulance req
 
 ## Features
 
-- Patient ambulance booking form
-- Hospital directory with approval and bed-availability details
-- Ambulance fleet status view
-- Basic chatbot intent handling
+- Patient ambulance booking form with hospital selection and nearest-ambulance dispatch
+- Hospital directory with approval workflow and bed-availability details
+- Ambulance fleet status view with status management
+- Booking lifecycle tracking (requested -> assigned -> on route -> completed/cancelled)
+- Stateful chatbot that can carry a booking or hospital-search conversation across turns
 - Mock REST API for hospitals, ambulances, bookings, and chatbot messages
+- A demo-only role switcher (Patient / Hospital / Fleet / Admin) that shows how role-gated actions will work once real authentication is added
 - PostgreSQL schema and fictional seed data for the next development stage
 - Project documentation for APIs, chatbot flows, security, and onboarding
 
@@ -50,7 +52,7 @@ The server hosts the frontend and API together. Press `Ctrl+C` to stop it.
 
 ```text
 backend/    Node.js server and API routes
-chatbot/    Chatbot intent and response logic
+chatbot/    Chatbot intent, session, and response logic
 database/   Database schema and fictional seed data
 docs/       Project and technical documentation
 frontend/   Patient, hospital, fleet, and admin demo screens
@@ -62,15 +64,21 @@ frontend/   Patient, hospital, fleet, and admin demo screens
 | --- | --- | --- |
 | `GET` | `/api/health` | Check whether the server is running |
 | `GET` | `/api/hospitals` | Retrieve hospital records |
-| `POST` | `/api/hospitals` | Add a hospital record |
+| `POST` | `/api/hospitals` | Add a hospital record (starts as `pending`) |
+| `PATCH` | `/api/hospitals/:id` | Approve or reject a hospital (demo `admin` role) |
 | `GET` | `/api/ambulances` | Retrieve ambulance records |
 | `POST` | `/api/ambulances` | Add an ambulance record |
+| `PATCH` | `/api/ambulances/:id` | Update ambulance status (demo `fleet`/`admin` role) |
 | `GET` | `/api/bookings` | Retrieve demo bookings |
-| `POST` | `/api/bookings` | Create an ambulance booking |
-| `POST` | `/api/chatbot/message` | Send a message to the chatbot |
+| `POST` | `/api/bookings` | Create an ambulance booking (auto-assigns nearest available ambulance) |
+| `PATCH` | `/api/bookings/:id` | Move a booking through its status lifecycle |
+| `POST` | `/api/chatbot/message` | Send a message to the stateful chatbot |
 
 See [`docs/api-docs.md`](docs/api-docs.md) for request and response examples.
 
+## Demo role switcher (not real authentication)
+
+The frontend includes a role dropdown (Patient / Hospital / Fleet / Admin) that sends an `x-demo-role` header on requests that change hospital, ambulance, or booking status. This exists only to preview how role-gated actions will look and is **not** a security control — there is no password, session, or identity check behind it. Real authentication (backed by the `users` table in `database/schema.sql`) is planned for a later phase. See [`docs/security-and-privacy.md`](docs/security-and-privacy.md).
 
 ## Data and Security
 
