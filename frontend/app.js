@@ -2,15 +2,32 @@ const state = {
   hospitals: [],
   ambulances: [],
   bookings: [],
-  role: ""
+  role: "",
+  destinationManuallySet: false
 };
 
-// Per-page-load conversation id so the chatbot can remember where it is in
-// a multi-step flow (e.g. mid-way through collecting booking details).
 const chatSessionId =
   window.crypto && window.crypto.randomUUID
     ? window.crypto.randomUUID()
     : `session-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+// Same known-area vocabulary the backend geocoder uses, kept small and
+// duplicated on purpose — the frontend only needs it to auto-suggest a
+// hospital by city, not to compute real distances.
+const CITY_GUESSES = [
+  { keywords: ["gomti nagar", "sgpgi", "lucknow"], city: "Lucknow" },
+  { keywords: ["mall road", "kanpur"], city: "Kanpur" }
+];
+
+function guessCityFromPickup(text) {
+  const lower = String(text || "").toLowerCase();
+  for (const guess of CITY_GUESSES) {
+    if (guess.keywords.some(keyword => lower.includes(keyword))) {
+      return guess.city;
+    }
+  }
+  return null;
+}
 
 async function api(path, options = {}) {
   const headers = {
@@ -29,15 +46,42 @@ async function api(path, options = {}) {
   return data;
 }
 
-function renderCounts() {
-  document.getElementById("hospital-count").textContent = state.hospitals.length;
-  document.getElementById("ambulance-count").textContent = state.ambulances.length;
-  document.getElementById("booking-count").textContent = state.bookings.length;
+function formToObject(form) {
+  return Object.fromEntries(new FormData(form).entries());
 }
+
+// ---------------------------------------------------------------------
+// Console (hero) stats
+// ---------------------------------------------------------------------
+
+function renderConsoleStats() {
+  const fleetReady = state.ambulances.filter(a => a.status === "available").length;
+  const hospitalsApproved = state.hospitals.filter(h => h.status === "approved").length;
+  const distances = state.bookings
+    .map(b => b.dispatchDistanceKm)
+    .filter(value => typeof value === "number");
+  const avgDistance = distances.length
+    ? `${(distances.reduce((sum, d) => sum + d, 0) / distances.length).toFixed(1)} km`
+    : "—";
+
+  document.getElementById("stat-fleet").textContent = fleetReady;
+  document.getElementById("stat-hospitals").textContent = hospitalsApproved;
+  document.getElementById("stat-distance").textContent = avgDistance;
+  document.getElementById("stat-bookings").textContent = state.bookings.length;
+}
+
+// ---------------------------------------------------------------------
+// Hospitals
+// ---------------------------------------------------------------------
 
 function renderHospitals() {
   const list = document.getElementById("hospital-list");
   const isAdmin = state.role === "admin";
+
+  if (!state.hospitals.length) {
+    list.innerHTML = `<p class="empty-note">No hospitals yet.</p>`;
+    return;
+  }
 
   list.innerHTML = state.hospitals.map(hospital => `
     <article class="item" data-hospital-id="${hospital.id}">
@@ -76,24 +120,64 @@ function renderHospitals() {
   }
 }
 
-function populateDestinationSelect() {
+function populateDestinationSelect(preferredCity) {
   const select = document.getElementById("destination-select");
+  const hint = document.getElementById("destination-hint");
   const approved = state.hospitals.filter(hospital => hospital.status === "approved");
   const previousValue = select.value;
 
-  select.innerHTML = approved.length
-    ? approved.map(hospital => `<option value="${hospital.id}">${hospital.name} — ${hospital.city}</option>`).join("")
-    : `<option value="">No approved hospitals yet</option>`;
+  if (!approved.length) {
+    select.innerHTML = `<option value="">No approved hospitals yet</option>`;
+    hint.textContent = "";
+    return;
+  }
+
+  select.innerHTML = approved.map(hospital =>
+    `<option value="${hospital.id}" data-city="${hospital.city}">${hospital.name} — ${hospital.city}</option>`
+  ).join("");
+
+  if (!state.destinationManuallySet && preferredCity) {
+    const match = approved.find(hospital => hospital.city.toLowerCase() === preferredCity.toLowerCase());
+    if (match) {
+      select.value = String(match.id);
+      hint.textContent = `Nearest match for ${preferredCity}`;
+      return;
+    }
+  }
 
   if (approved.some(hospital => String(hospital.id) === previousValue)) {
     select.value = previousValue;
   }
+  if (!state.destinationManuallySet && !preferredCity) {
+    hint.textContent = "";
+  }
 }
+
+document.getElementById("pickup-input").addEventListener("input", event => {
+  const city = guessCityFromPickup(event.target.value);
+  if (city) {
+    populateDestinationSelect(city);
+  }
+});
+
+document.getElementById("destination-select").addEventListener("change", () => {
+  state.destinationManuallySet = true;
+  document.getElementById("destination-hint").textContent = "";
+});
+
+// ---------------------------------------------------------------------
+// Ambulances
+// ---------------------------------------------------------------------
 
 function renderAmbulances() {
   const list = document.getElementById("ambulance-list");
   const canManage = state.role === "fleet" || state.role === "admin";
   const statuses = ["available", "busy", "maintenance", "offline"];
+
+  if (!state.ambulances.length) {
+    list.innerHTML = `<p class="empty-note">No ambulances yet.</p>`;
+    return;
+  }
 
   list.innerHTML = state.ambulances.map(ambulance => `
     <article class="item" data-ambulance-id="${ambulance.id}">
@@ -133,6 +217,10 @@ function renderAmbulances() {
   }
 }
 
+// ---------------------------------------------------------------------
+// Bookings
+// ---------------------------------------------------------------------
+
 const BOOKING_NEXT_STEPS = {
   requested: [["assigned", "Mark assigned"], ["cancelled", "Cancel"]],
   assigned: [["on_route", "Mark on route"], ["cancelled", "Cancel"]],
@@ -146,7 +234,7 @@ function renderBookings() {
   const canManage = state.role === "fleet" || state.role === "admin";
 
   if (!state.bookings.length) {
-    list.innerHTML = `<p class="empty-note">No bookings yet — the board fills in as patients request ambulances.</p>`;
+    list.innerHTML = `<p class="empty-note">No bookings yet.</p>`;
     return;
   }
 
@@ -162,7 +250,7 @@ function renderBookings() {
       <p>${booking.pickup} → ${booking.destination}</p>
       <p class="item-meta">
         ${ambulance ? `${ambulance.registrationNumber} (${ambulance.driverName})` : "No ambulance assigned yet"}
-        ${booking.dispatchDistanceKm != null ? ` · ~${booking.dispatchDistanceKm} km away` : ""}
+        ${booking.dispatchDistanceKm != null ? ` · ~${booking.dispatchDistanceKm} km` : ""}
       </p>
       ${canManage && nextSteps.length ? `
         <div class="row-actions">
@@ -192,14 +280,17 @@ function renderBookings() {
   }
 }
 
-// Each dashboard section refreshes independently so one failing request
-// (e.g. the API being briefly unreachable) doesn't blank out the whole page.
+// ---------------------------------------------------------------------
+// Dashboard refresh — each section independent so one failure doesn't
+// blank the whole page.
+// ---------------------------------------------------------------------
+
 async function refreshHospitals() {
   try {
     state.hospitals = await api("/api/hospitals");
     renderHospitals();
-    populateDestinationSelect();
-    renderCounts();
+    populateDestinationSelect(guessCityFromPickup(document.getElementById("pickup-input").value));
+    renderConsoleStats();
   } catch (error) {
     document.getElementById("hospital-list").innerHTML = `<p class="load-error">${error.message}</p>`;
   }
@@ -210,7 +301,7 @@ async function refreshAmbulances() {
     state.ambulances = await api("/api/ambulances");
     renderAmbulances();
     renderBookings();
-    renderCounts();
+    renderConsoleStats();
   } catch (error) {
     document.getElementById("ambulance-list").innerHTML = `<p class="load-error">${error.message}</p>`;
   }
@@ -220,7 +311,7 @@ async function refreshBookings() {
   try {
     state.bookings = await api("/api/bookings");
     renderBookings();
-    renderCounts();
+    renderConsoleStats();
   } catch (error) {
     document.getElementById("booking-list").innerHTML = `<p class="load-error">${error.message}</p>`;
   }
@@ -230,9 +321,9 @@ async function refreshDashboard() {
   await Promise.allSettled([refreshHospitals(), refreshAmbulances(), refreshBookings()]);
 }
 
-function formToObject(form) {
-  return Object.fromEntries(new FormData(form).entries());
-}
+// ---------------------------------------------------------------------
+// Role switcher (demo only — see docs/security-and-privacy.md)
+// ---------------------------------------------------------------------
 
 document.getElementById("demo-role").addEventListener("change", event => {
   state.role = event.target.value;
@@ -241,11 +332,15 @@ document.getElementById("demo-role").addEventListener("change", event => {
   renderBookings();
 });
 
+// ---------------------------------------------------------------------
+// Quick booking form
+// ---------------------------------------------------------------------
+
 document.getElementById("booking-form").addEventListener("submit", async event => {
   event.preventDefault();
   const form = event.currentTarget;
   const result = document.getElementById("booking-result");
-  result.textContent = "Creating booking...";
+  result.textContent = "Requesting ambulance…";
 
   try {
     const booking = await api("/api/bookings", {
@@ -253,16 +348,73 @@ document.getElementById("booking-form").addEventListener("submit", async event =
       body: JSON.stringify(formToObject(form))
     });
     const ambulanceNote = booking.ambulanceId
-      ? `Ambulance ${state.ambulances.find(a => a.id === booking.ambulanceId)?.registrationNumber || booking.ambulanceId} assigned.`
-      : "Waiting for the next available ambulance.";
-    result.textContent = `Booking #${booking.id} created. Status: ${booking.status}. ${ambulanceNote}`;
+      ? `Ambulance ${state.ambulances.find(a => a.id === booking.ambulanceId)?.registrationNumber || booking.ambulanceId} is on the way${booking.dispatchDistanceKm != null ? ` (~${booking.dispatchDistanceKm} km out)` : ""}.`
+      : "No ambulance is free right now — you're first in line for the next one.";
+    result.textContent = `Booking #${booking.id} confirmed. ${ambulanceNote}`;
     form.reset();
+    state.destinationManuallySet = false;
     await Promise.all([refreshBookings(), refreshAmbulances()]);
     populateDestinationSelect();
   } catch (error) {
     result.textContent = error.message;
   }
 });
+
+// ---------------------------------------------------------------------
+// Partner onboarding forms
+// ---------------------------------------------------------------------
+
+document.querySelectorAll("[data-toggle-form]").forEach(button => {
+  button.addEventListener("click", () => {
+    const form = document.getElementById(button.getAttribute("data-toggle-form"));
+    const isHidden = form.classList.toggle("hidden");
+    button.textContent = isHidden
+      ? button.getAttribute("data-toggle-form") === "hospital-partner-form" ? "Register hospital" : "Register ambulance"
+      : "Cancel";
+  });
+});
+
+document.getElementById("hospital-partner-form").addEventListener("submit", async event => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const result = document.getElementById("hospital-partner-result");
+  result.textContent = "Submitting…";
+
+  try {
+    const hospital = await api("/api/hospitals", {
+      method: "POST",
+      body: JSON.stringify(formToObject(form))
+    });
+    result.textContent = `Thanks — ${hospital.name} is submitted and pending admin review.`;
+    form.reset();
+    await refreshHospitals();
+  } catch (error) {
+    result.textContent = error.message;
+  }
+});
+
+document.getElementById("fleet-partner-form").addEventListener("submit", async event => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const result = document.getElementById("fleet-partner-result");
+  result.textContent = "Submitting…";
+
+  try {
+    const ambulance = await api("/api/ambulances", {
+      method: "POST",
+      body: JSON.stringify(formToObject(form))
+    });
+    result.textContent = `Thanks — ${ambulance.registrationNumber} has been added to the fleet.`;
+    form.reset();
+    await refreshAmbulances();
+  } catch (error) {
+    result.textContent = error.message;
+  }
+});
+
+// ---------------------------------------------------------------------
+// Chatbot
+// ---------------------------------------------------------------------
 
 function appendChatMessage(role, text) {
   const transcript = document.getElementById("chat-transcript");
