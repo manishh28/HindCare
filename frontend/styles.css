@@ -333,6 +333,46 @@ a {
   50%, 100% { opacity: 0.25; }
 }
 
+.amb-suspension {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: amb-suspension 0.32s ease-in-out infinite;
+}
+
+@keyframes amb-suspension {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-1.4px); }
+}
+
+.wheel-spin {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: wheel-spin 0.4s linear infinite;
+}
+
+@keyframes wheel-spin {
+  to { transform: rotate(360deg); }
+}
+
+.speed-line {
+  animation: speed-flicker 0.5s ease-in-out infinite;
+}
+
+@keyframes speed-flicker {
+  0%, 100% { opacity: 0.15; }
+  50% { opacity: 0.6; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .amb-suspension,
+  .wheel-spin,
+  .speed-line,
+  .light-a,
+  .light-b {
+    animation: none;
+  }
+}
+
 .scene-caption {
   margin-top: 14px;
   font-family: var(--font-mono);
