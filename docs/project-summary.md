@@ -73,12 +73,14 @@ Build a unified healthcare platform that connects patients, hospitals, and ambul
 
 ## Current Starter Scope
 
-This repo currently provides a local proof of concept:
+This repo currently provides a local proof of concept, laid out as a booking-first homepage rather than an internal-tool-style dashboard:
 
-- Patient booking form.
-- Nearby hospital list.
-- Fleet status view.
-- Admin snapshot.
-- Chatbot prompt box.
+- Hero booking form (patient name, phone, pickup, emergency type) linked to real hospital records and nearest-ambulance dispatch — the primary call to action on the page, matching the UX pattern of consumer ambulance-booking apps.
+- A "Join HindCare" section with separate onboarding forms for hospitals and for ambulance/fleet operators, feeding the same approval workflow the admin role uses.
+- Nearby hospital list with an admin approval workflow.
+- Fleet status view with status management.
+- Booking board with a status lifecycle (requested → assigned → on route → completed/cancelled).
+- Chatbot prompt box that carries a conversation across turns for booking and hospital search.
+- A demo-only role switcher previewing role-gated actions (not real authentication).
 - Mock API with in-memory data.
 - SQL schema for future database integration.

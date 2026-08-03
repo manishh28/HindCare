@@ -3,131 +3,279 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>HindCare Aggregator</title>
+    <title>HindCare — Book an ambulance fast</title>
+    <meta name="description" content="HindCare connects patients with the nearest available ambulance and hospital network, plus onboarding for hospital and fleet partners.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/styles.css">
   </head>
   <body>
+    <div class="demo-banner">
+      Phase 1 prototype — fictional demo data, not a live emergency service. In a real emergency, call your local emergency number.
+    </div>
+
     <header class="topbar">
-      <div class="brand-lockup">
-        <img src="/assets/hindcare-logo.png" alt="HindCare MedTech logo" class="brand-logo">
-        <div>
-          <p class="eyebrow">HindCare MedTech</p>
-          <h1>Emergency care dispatch dashboard</h1>
-          <p class="topbar-note">Phase 1 prototype</p>
+      <a class="brand-lockup" href="#top">
+        <img src="/assets/hindcare-logo.png" alt="" class="brand-logo">
+        <span class="brand-name">HindCare</span>
+      </a>
+      <nav class="topbar-nav">
+        <a href="#quick-book">Book ambulance</a>
+        <a href="#network">Network</a>
+        <a href="#partners">Partner with us</a>
+        <a href="#assistant">Assistant</a>
+      </nav>
+    </header>
+
+    <main id="top">
+      <!-- ============ HERO: dispatch console ============ -->
+      <section class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">[ STATUS: LIVE DEMO ]</p>
+          <h1>Get an ambulance moving in minutes, not calls.</h1>
+          <p class="hero-sub">Tell us where you are. We match you with the nearest available ambulance and the right hospital — no hold music, no runaround.</p>
+          <div class="hero-actions">
+            <a class="cta-primary" href="#quick-book">
+              <span class="pulse-dot" aria-hidden="true"></span>
+              Book ambulance now
+            </a>
+            <a class="cta-secondary" href="tel:+911800000000">Call demo dispatch line</a>
+          </div>
+          <p class="hero-fineprint">Demo line only — this prototype does not dispatch real ambulances.</p>
         </div>
+
+        <div class="console" aria-label="Live network status">
+          <div class="console-head">
+            <span class="console-dot" aria-hidden="true"></span>
+            NETWORK READOUT
+          </div>
+          <dl class="console-stats">
+            <div class="console-stat">
+              <dt>Ambulances ready</dt>
+              <dd id="stat-fleet">—</dd>
+            </div>
+            <div class="console-stat">
+              <dt>Hospitals in network</dt>
+              <dd id="stat-hospitals">—</dd>
+            </div>
+            <div class="console-stat">
+              <dt>Avg. dispatch distance</dt>
+              <dd id="stat-distance">—</dd>
+            </div>
+            <div class="console-stat">
+              <dt>Requests handled</dt>
+              <dd id="stat-bookings">—</dd>
+            </div>
+          </dl>
+          <div class="console-trace" aria-hidden="true">
+            <svg viewBox="0 0 400 40" preserveAspectRatio="none">
+              <path class="trace-line" d="M0,20 L150,20 L165,4 L180,36 L195,20 L400,20" />
+            </svg>
+          </div>
+        </div>
+      </section>
+
+      <div class="pulse-divider" aria-hidden="true">
+        <svg viewBox="0 0 1200 40" preserveAspectRatio="none">
+          <path class="pulse-line" d="M0,20 L440,20 L460,4 L480,36 L500,20 L1200,20" />
+        </svg>
       </div>
-      <div class="topbar-actions">
+
+      <!-- ============ QUICK BOOK ============ -->
+      <section class="panel-shell" id="quick-book">
+        <p class="eyebrow">[ CODE 3 — EMERGENCY BOOKING ]</p>
+        <h2>Request an ambulance</h2>
+        <p class="section-sub">Four fields. We geo-match the nearest available ambulance and suggest the closest hospital automatically.</p>
+
+        <form id="booking-form" class="booking-form">
+          <div class="field-row">
+            <label>
+              Patient name
+              <input name="patientName" placeholder="Manish Kumar" required autocomplete="name">
+            </label>
+            <label>
+              Phone
+              <input name="phone" placeholder="+91-9876543210" required autocomplete="tel">
+            </label>
+          </div>
+
+          <label>
+            Pickup location
+            <input name="pickup" id="pickup-input" list="known-areas" placeholder="Gomti Nagar, Lucknow" required autocomplete="off">
+            <datalist id="known-areas">
+              <option value="Gomti Nagar, Lucknow">
+              <option value="SGPGI Road, Lucknow">
+              <option value="Mall Road, Kanpur">
+            </datalist>
+          </label>
+
+          <label>
+            Destination hospital
+            <span class="field-hint" id="destination-hint"></span>
+            <select name="hospitalId" id="destination-select" required>
+              <option value="">Loading hospitals…</option>
+            </select>
+          </label>
+
+          <fieldset class="emergency-type-picker">
+            <legend>Emergency type</legend>
+            <label class="pill">
+              <input type="radio" name="emergencyType" value="general" checked>
+              <span>General</span>
+            </label>
+            <label class="pill">
+              <input type="radio" name="emergencyType" value="cardiac">
+              <span>Cardiac</span>
+            </label>
+            <label class="pill">
+              <input type="radio" name="emergencyType" value="trauma">
+              <span>Trauma</span>
+            </label>
+            <label class="pill">
+              <input type="radio" name="emergencyType" value="icu">
+              <span>ICU transfer</span>
+            </label>
+          </fieldset>
+
+          <button type="submit" class="cta-primary cta-block">Request ambulance now</button>
+        </form>
+        <p class="form-result" id="booking-result" role="status"></p>
+      </section>
+
+      <div class="pulse-divider" aria-hidden="true">
+        <svg viewBox="0 0 1200 40" preserveAspectRatio="none">
+          <path class="pulse-line" d="M0,20 L440,20 L460,4 L480,36 L500,20 L1200,20" />
+        </svg>
+      </div>
+
+      <!-- ============ NETWORK ============ -->
+      <section class="panel-shell" id="network">
+        <p class="eyebrow">[ FLEET REGISTRY ]</p>
+        <h2>Live network status</h2>
+        <div class="network-grid">
+          <div class="network-col">
+            <h3>Hospitals</h3>
+            <div class="list" id="hospital-list"></div>
+          </div>
+          <div class="network-col">
+            <h3>Ambulances</h3>
+            <div class="list" id="ambulance-list"></div>
+          </div>
+          <div class="network-col">
+            <h3>Booking board</h3>
+            <div class="list" id="booking-list"></div>
+          </div>
+        </div>
+      </section>
+
+      <div class="pulse-divider" aria-hidden="true">
+        <svg viewBox="0 0 1200 40" preserveAspectRatio="none">
+          <path class="pulse-line" d="M0,20 L440,20 L460,4 L480,36 L500,20 L1200,20" />
+        </svg>
+      </div>
+
+      <!-- ============ PARTNERS ============ -->
+      <section class="panel-shell" id="partners">
+        <p class="eyebrow">[ PARTNER NETWORK ]</p>
+        <h2>Join HindCare</h2>
+        <p class="section-sub">Hospitals extend their emergency reach. Ambulance operators fill idle hours. Both plug straight into live dispatch.</p>
+
+        <div class="partner-grid">
+          <article class="partner-card">
+            <h3>List your hospital</h3>
+            <p>Get matched with patients who need your beds, and show real-time availability to the network.</p>
+            <button type="button" class="cta-secondary" data-toggle-form="hospital-partner-form">Register hospital</button>
+            <form id="hospital-partner-form" class="partner-form hidden">
+              <label>
+                Hospital name
+                <input name="name" placeholder="CarePlus Trauma Center" required>
+              </label>
+              <label>
+                City
+                <input name="city" placeholder="Lucknow" required>
+              </label>
+              <label>
+                Address
+                <input name="address" placeholder="Mall Road, Kanpur" required>
+              </label>
+              <label>
+                Phone
+                <input name="phone" placeholder="+91-9000000000" required>
+              </label>
+              <button type="submit" class="cta-primary cta-block">Submit for review</button>
+              <p class="form-result" id="hospital-partner-result" role="status"></p>
+            </form>
+          </article>
+
+          <article class="partner-card">
+            <h3>Register your ambulance or fleet</h3>
+            <p>Pick up dispatch requests in your coverage area and track every trip from one place.</p>
+            <button type="button" class="cta-secondary" data-toggle-form="fleet-partner-form">Register ambulance</button>
+            <form id="fleet-partner-form" class="partner-form hidden">
+              <label>
+                Registration number
+                <input name="registrationNumber" placeholder="UP32 AB 1010" required>
+              </label>
+              <label>
+                Ambulance type
+                <select name="type" required>
+                  <option value="basic">Basic</option>
+                  <option value="advanced">Advanced</option>
+                  <option value="icu">ICU</option>
+                  <option value="neonatal">Neonatal</option>
+                </select>
+              </label>
+              <label>
+                Driver name
+                <input name="driverName" placeholder="Rahul Singh" required>
+              </label>
+              <label>
+                Phone
+                <input name="phone" placeholder="+91-9000000000" required>
+              </label>
+              <button type="submit" class="cta-primary cta-block">Submit for review</button>
+              <p class="form-result" id="fleet-partner-result" role="status"></p>
+            </form>
+          </article>
+        </div>
+      </section>
+
+      <div class="pulse-divider" aria-hidden="true">
+        <svg viewBox="0 0 1200 40" preserveAspectRatio="none">
+          <path class="pulse-line" d="M0,20 L440,20 L460,4 L480,36 L500,20 L1200,20" />
+        </svg>
+      </div>
+
+      <!-- ============ ASSISTANT ============ -->
+      <section class="panel-shell" id="assistant">
+        <p class="eyebrow">[ DISPATCH ASSISTANT ]</p>
+        <h2>Ask the assistant</h2>
+        <p class="section-sub">Book by chat, find a hospital, or get routed to support — it remembers where you left off.</p>
+        <div class="chat-shell">
+          <div class="chat-transcript" id="chat-transcript" aria-live="polite"></div>
+          <form id="chatbot-form" class="chatbot-form">
+            <input name="message" placeholder="Book me an ambulance now" required autocomplete="off">
+            <button type="submit" class="cta-primary">Send</button>
+          </form>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="footer-row">
+        <p>HindCare MedTech — Phase 1 prototype. Fictional data only.</p>
         <label class="role-switcher">
-          <span>Demo role</span>
+          <span>Team access (demo, not a login)</span>
           <select id="demo-role">
-            <option value="">Patient (no admin access)</option>
+            <option value="">Patient view</option>
             <option value="hospital">Hospital admin</option>
             <option value="fleet">Fleet owner</option>
             <option value="admin">Admin</option>
           </select>
         </label>
-        <a class="emergency-link" href="#booking">Book Ambulance</a>
       </div>
-    </header>
-    <p class="role-disclaimer">The role switcher is a demo-only preview of role-gated actions. It is not a login and does not verify identity — see docs/security-and-privacy.md.</p>
-
-    <main>
-      <section class="status-strip" aria-label="Platform snapshot">
-        <article class="stat-card stat-hospitals">
-          <span id="hospital-count">0</span>
-          <p>Hospitals</p>
-        </article>
-        <article class="stat-card stat-ambulances">
-          <span id="ambulance-count">0</span>
-          <p>Ambulances</p>
-        </article>
-        <article class="stat-card stat-bookings">
-          <span id="booking-count">0</span>
-          <p>Bookings</p>
-        </article>
-      </section>
-
-      <section class="workspace-grid">
-        <div class="panel" id="booking">
-          <div class="panel-heading">
-            <p class="eyebrow">Patient</p>
-            <h2>Ambulance booking</h2>
-          </div>
-          <form id="booking-form">
-            <label>
-              Patient name
-              <input name="patientName" placeholder="Manish Kumar" required>
-            </label>
-            <label>
-              Phone
-              <input name="phone" placeholder="+91-9876543210" required>
-            </label>
-            <label>
-              Pickup location
-              <input name="pickup" list="known-areas" placeholder="Gomti Nagar, Lucknow" required>
-              <datalist id="known-areas">
-                <option value="Gomti Nagar, Lucknow">
-                <option value="SGPGI Road, Lucknow">
-                <option value="Mall Road, Kanpur">
-              </datalist>
-            </label>
-            <label>
-              Destination hospital
-              <select name="hospitalId" id="destination-select" required>
-                <option value="">Loading hospitals…</option>
-              </select>
-            </label>
-            <label>
-              Emergency type
-              <select name="emergencyType">
-                <option value="general">General emergency</option>
-                <option value="cardiac">Cardiac</option>
-                <option value="trauma">Trauma</option>
-                <option value="icu">ICU transfer</option>
-              </select>
-            </label>
-            <button type="submit">Create booking</button>
-          </form>
-          <p class="form-result" id="booking-result" role="status"></p>
-        </div>
-
-        <div class="panel">
-          <div class="panel-heading">
-            <p class="eyebrow">Hospitals</p>
-            <h2>Nearby emergency partners</h2>
-          </div>
-          <div class="list" id="hospital-list"></div>
-        </div>
-
-        <div class="panel">
-          <div class="panel-heading">
-            <p class="eyebrow">Fleet</p>
-            <h2>Ambulance status</h2>
-          </div>
-          <div class="list" id="ambulance-list"></div>
-        </div>
-
-        <div class="panel">
-          <div class="panel-heading">
-            <p class="eyebrow">Bookings</p>
-            <h2>Live booking board</h2>
-          </div>
-          <div class="list" id="booking-list"></div>
-        </div>
-
-        <div class="panel panel-wide">
-          <div class="panel-heading">
-            <p class="eyebrow">Assistant</p>
-            <h2>Emergency chatbot</h2>
-          </div>
-          <div class="chat-transcript" id="chat-transcript" aria-live="polite"></div>
-          <form id="chatbot-form" class="chatbot-form">
-            <input name="message" placeholder="Book me an ambulance now" required autocomplete="off">
-            <button type="submit">Send</button>
-          </form>
-        </div>
-      </section>
-    </main>
+    </footer>
 
     <script src="/app.js"></script>
   </body>

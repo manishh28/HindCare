@@ -1,14 +1,20 @@
 # HindCare Hospital and Ambulance Aggregator
 
-HindCare is a Phase 1 prototype for connecting patients with hospitals and ambulance operators through one emergency-care platform.
+HindCare is a Phase 1 prototype for connecting patients with hospitals and ambulance operators through one emergency-care platform, designed the way consumer ambulance-booking services (Medulance, RED.Health, Medicab, etc.) are: **booking an ambulance is the primary action**, front and center on the homepage, with hospital/fleet partner sign-up as a clear secondary path.
 
-The prototype demonstrates the main workflow: a patient submits an ambulance request, hospitals are displayed with basic availability information, ambulance records are shown to fleet users, and a simple chatbot responds to common support questions.
+> **Current status:** Phase 1 prototype using fictional, in-memory demo data. This is not a live emergency service and does not yet connect to real hospitals, ambulance fleets, GPS services, or patient records. In a real emergency, call your local emergency number.
 
-> **Current status:** Phase 1 prototype using fictional, in-memory demo data. This is not a live emergency service and does not yet connect to real hospitals, ambulance fleets, GPS services, or patient records.
+## Design approach
+
+- **Booking comes first.** The hero section is a 4-field emergency request form (patient name, phone, pickup, emergency type) with hospital auto-matched from the pickup area — no login, no scrolling required to request an ambulance.
+- **Partnering is a clear secondary path.** A dedicated "Join HindCare" section lets hospitals and ambulance/fleet operators register, landing as `pending` (hospitals) or immediately joining the fleet (ambulances) for admin review.
+- **Live network status is visible but not in the way.** Hospitals, ambulances, and the booking board sit below the fold for anyone who wants to see the data behind the demo.
+- **Nothing here fakes real traction.** Stats shown (fleet ready, hospitals in network, avg. dispatch distance, requests handled) are computed live from the actual in-memory demo data — not invented marketing numbers.
 
 ## Features
 
-- Patient ambulance booking form with hospital selection and nearest-ambulance dispatch
+- Hero-first ambulance booking form with pickup-based hospital auto-match and nearest-available-ambulance dispatch
+- Hospital and ambulance/fleet partner onboarding forms, wired to the same approval workflow admins use
 - Hospital directory with approval workflow and bed-availability details
 - Ambulance fleet status view with status management
 - Booking lifecycle tracking (requested -> assigned -> on route -> completed/cancelled)
