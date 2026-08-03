@@ -51,26 +51,6 @@ function formToObject(form) {
 }
 
 // ---------------------------------------------------------------------
-// Console (hero) stats
-// ---------------------------------------------------------------------
-
-function renderConsoleStats() {
-  const fleetReady = state.ambulances.filter(a => a.status === "available").length;
-  const hospitalsApproved = state.hospitals.filter(h => h.status === "approved").length;
-  const distances = state.bookings
-    .map(b => b.dispatchDistanceKm)
-    .filter(value => typeof value === "number");
-  const avgDistance = distances.length
-    ? `${(distances.reduce((sum, d) => sum + d, 0) / distances.length).toFixed(1)} km`
-    : "—";
-
-  document.getElementById("stat-fleet").textContent = fleetReady;
-  document.getElementById("stat-hospitals").textContent = hospitalsApproved;
-  document.getElementById("stat-distance").textContent = avgDistance;
-  document.getElementById("stat-bookings").textContent = state.bookings.length;
-}
-
-// ---------------------------------------------------------------------
 // Hospitals
 // ---------------------------------------------------------------------
 
@@ -290,7 +270,6 @@ async function refreshHospitals() {
     state.hospitals = await api("/api/hospitals");
     renderHospitals();
     populateDestinationSelect(guessCityFromPickup(document.getElementById("pickup-input").value));
-    renderConsoleStats();
   } catch (error) {
     document.getElementById("hospital-list").innerHTML = `<p class="load-error">${error.message}</p>`;
   }
@@ -301,7 +280,6 @@ async function refreshAmbulances() {
     state.ambulances = await api("/api/ambulances");
     renderAmbulances();
     renderBookings();
-    renderConsoleStats();
   } catch (error) {
     document.getElementById("ambulance-list").innerHTML = `<p class="load-error">${error.message}</p>`;
   }
@@ -311,7 +289,6 @@ async function refreshBookings() {
   try {
     state.bookings = await api("/api/bookings");
     renderBookings();
-    renderConsoleStats();
   } catch (error) {
     document.getElementById("booking-list").innerHTML = `<p class="load-error">${error.message}</p>`;
   }
@@ -320,6 +297,55 @@ async function refreshBookings() {
 async function refreshDashboard() {
   await Promise.allSettled([refreshHospitals(), refreshAmbulances(), refreshBookings()]);
 }
+
+// ---------------------------------------------------------------------
+// Floating panels — assistant chat and partner sign-up both open on
+// click from the nav links or their floating action buttons, rather
+// than living inline in the page.
+// ---------------------------------------------------------------------
+
+// The partner panel's actual show/hide target is its backdrop wrapper
+// (so the dark overlay + centering both toggle together); the chat
+// panel toggles itself directly.
+const PANEL_TARGETS = { "partner-panel": "partner-panel-backdrop" };
+
+function panelElement(key) {
+  return document.getElementById(PANEL_TARGETS[key] || key);
+}
+
+function openPanel(key) {
+  const el = panelElement(key);
+  if (el) el.classList.remove("hidden");
+}
+
+function closePanel(key) {
+  const el = panelElement(key);
+  if (el) el.classList.add("hidden");
+}
+
+document.querySelectorAll("[data-open]").forEach(button => {
+  button.addEventListener("click", () => openPanel(button.getAttribute("data-open")));
+});
+
+document.querySelectorAll("[data-close]").forEach(element => {
+  element.addEventListener("click", event => {
+    // Close buttons always close. The backdrop only closes on a direct
+    // click on the backdrop itself, not on clicks inside the modal card
+    // that happen to bubble up to it.
+    const isDirectHit = event.target === event.currentTarget;
+    const isCloseButton = element.tagName === "BUTTON";
+    if (isDirectHit || isCloseButton) {
+      closePanel(element.getAttribute("data-close"));
+    }
+  });
+});
+
+document.addEventListener("keydown", event => {
+  if (event.key === "Escape") {
+    closePanel("chat-panel");
+    closePanel("partner-panel");
+  }
+});
 
 // ---------------------------------------------------------------------
 // Role switcher (demo only — see docs/security-and-privacy.md)

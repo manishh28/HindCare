@@ -11,10 +11,6 @@
     <link rel="stylesheet" href="/styles.css">
   </head>
   <body>
-    <div class="demo-banner">
-      Phase 1 prototype — fictional demo data, not a live emergency service. In a real emergency, call your local emergency number.
-    </div>
-
     <header class="topbar">
       <a class="brand-lockup" href="#top">
         <img src="/assets/hindcare-logo.png" alt="" class="brand-logo">
@@ -23,8 +19,8 @@
       <nav class="topbar-nav">
         <a href="#quick-book">Book ambulance</a>
         <a href="#network">Network</a>
-        <a href="#partners">Partner with us</a>
-        <a href="#assistant">Assistant</a>
+        <button type="button" data-open="partner-panel">Partner with us</button>
+        <button type="button" data-open="chat-panel">Assistant</button>
       </nav>
     </header>
 
@@ -32,7 +28,7 @@
       <!-- ============ HERO: dispatch console ============ -->
       <section class="hero">
         <div class="hero-copy">
-          <p class="eyebrow">[ STATUS: LIVE DEMO ]</p>
+          <p class="eyebrow">[ 24×7 EMERGENCY DISPATCH ]</p>
           <h1>Get an ambulance moving in minutes, not calls.</h1>
           <p class="hero-sub">Tell us where you are. We match you with the nearest available ambulance and the right hospital — no hold music, no runaround.</p>
           <div class="hero-actions">
@@ -40,39 +36,33 @@
               <span class="pulse-dot" aria-hidden="true"></span>
               Book ambulance now
             </a>
-            <a class="cta-secondary" href="tel:+911800000000">Call demo dispatch line</a>
+            <a class="cta-secondary" href="tel:+911800000000">Call dispatch line</a>
           </div>
-          <p class="hero-fineprint">Demo line only — this prototype does not dispatch real ambulances.</p>
+          <p class="hero-fineprint">Student project — in a real emergency, always call your local emergency number.</p>
         </div>
 
-        <div class="console" aria-label="Live network status">
-          <div class="console-head">
-            <span class="console-dot" aria-hidden="true"></span>
-            NETWORK READOUT
+        <div class="ambulance-scene" aria-hidden="true">
+          <div class="scene-head">
+            <span class="scene-dot"></span>
+            EN ROUTE
           </div>
-          <dl class="console-stats">
-            <div class="console-stat">
-              <dt>Ambulances ready</dt>
-              <dd id="stat-fleet">—</dd>
+          <div class="scene-stage">
+            <div class="scene-road"></div>
+            <div class="ambulance">
+              <svg viewBox="0 0 160 80" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="40" cy="62" r="10" fill="#1f2937" />
+                <circle cx="120" cy="62" r="10" fill="#1f2937" />
+                <rect x="10" y="28" width="102" height="32" rx="8" fill="#ffffff" />
+                <rect x="92" y="12" width="40" height="28" rx="8" fill="#ffffff" />
+                <rect x="100" y="18" width="24" height="14" rx="2" fill="#bcd9ff" />
+                <rect x="37" y="34" width="24" height="6" fill="var(--siren)" />
+                <rect x="44" y="27" width="10" height="20" fill="var(--siren)" />
+                <rect x="70" y="6" width="14" height="7" rx="2" fill="#e11d2e" class="light-a" />
+                <rect x="86" y="6" width="14" height="7" rx="2" fill="#1d4ed8" class="light-b" />
+              </svg>
             </div>
-            <div class="console-stat">
-              <dt>Hospitals in network</dt>
-              <dd id="stat-hospitals">—</dd>
-            </div>
-            <div class="console-stat">
-              <dt>Avg. dispatch distance</dt>
-              <dd id="stat-distance">—</dd>
-            </div>
-            <div class="console-stat">
-              <dt>Requests handled</dt>
-              <dd id="stat-bookings">—</dd>
-            </div>
-          </dl>
-          <div class="console-trace" aria-hidden="true">
-            <svg viewBox="0 0 400 40" preserveAspectRatio="none">
-              <path class="trace-line" d="M0,20 L150,20 L165,4 L180,36 L195,20 L400,20" />
-            </svg>
           </div>
+          <p class="scene-caption">Matched with the nearest available ambulance — dispatched instantly.</p>
         </div>
       </section>
 
@@ -168,17 +158,61 @@
           </div>
         </div>
       </section>
+    </main>
 
-      <div class="pulse-divider" aria-hidden="true">
-        <svg viewBox="0 0 1200 40" preserveAspectRatio="none">
-          <path class="pulse-line" d="M0,20 L440,20 L460,4 L480,36 L500,20 L1200,20" />
-        </svg>
+    <footer class="site-footer">
+      <div class="footer-row">
+        <p>HindCare MedTech</p>
+        <label class="role-switcher">
+          <span>Team access (not a login)</span>
+          <select id="demo-role">
+            <option value="">Patient view</option>
+            <option value="hospital">Hospital admin</option>
+            <option value="fleet">Fleet owner</option>
+            <option value="admin">Admin</option>
+          </select>
+        </label>
       </div>
+    </footer>
 
-      <!-- ============ PARTNERS ============ -->
-      <section class="panel-shell" id="partners">
+    <!-- ============ FLOATING ACTIONS ============ -->
+    <div class="fab-stack">
+      <button type="button" class="fab fab-chat" data-open="chat-panel" aria-label="Open assistant chat">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+        </svg>
+      </button>
+      <button type="button" class="fab fab-partner" data-open="partner-panel" aria-label="Become a partner">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+          <circle cx="9" cy="7" r="4" />
+          <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+          <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+        </svg>
+      </button>
+    </div>
+
+    <!-- ============ ASSISTANT (floating panel) ============ -->
+    <div class="chat-panel hidden" id="chat-panel">
+      <div class="chat-panel-header">
+        <span>HindCare assistant</span>
+        <button type="button" class="panel-close" data-close="chat-panel" aria-label="Close assistant">✕</button>
+      </div>
+      <div class="chat-panel-body">
+        <div class="chat-transcript" id="chat-transcript" aria-live="polite"></div>
+        <form id="chatbot-form" class="chatbot-form">
+          <input name="message" placeholder="Book me an ambulance now" required autocomplete="off">
+          <button type="submit" class="cta-primary">Send</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- ============ PARTNER SIGN-UP (modal) ============ -->
+    <div class="overlay-backdrop hidden" id="partner-panel-backdrop" data-close="partner-panel">
+      <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="partner-panel-title" id="partner-panel">
+        <button type="button" class="panel-close" data-close="partner-panel" aria-label="Close partner sign-up">✕</button>
         <p class="eyebrow">[ PARTNER NETWORK ]</p>
-        <h2>Join HindCare</h2>
+        <h2 id="partner-panel-title">Join HindCare</h2>
         <p class="section-sub">Hospitals extend their emergency reach. Ambulance operators fill idle hours. Both plug straight into live dispatch.</p>
 
         <div class="partner-grid">
@@ -239,43 +273,8 @@
             </form>
           </article>
         </div>
-      </section>
-
-      <div class="pulse-divider" aria-hidden="true">
-        <svg viewBox="0 0 1200 40" preserveAspectRatio="none">
-          <path class="pulse-line" d="M0,20 L440,20 L460,4 L480,36 L500,20 L1200,20" />
-        </svg>
       </div>
-
-      <!-- ============ ASSISTANT ============ -->
-      <section class="panel-shell" id="assistant">
-        <p class="eyebrow">[ DISPATCH ASSISTANT ]</p>
-        <h2>Ask the assistant</h2>
-        <p class="section-sub">Book by chat, find a hospital, or get routed to support — it remembers where you left off.</p>
-        <div class="chat-shell">
-          <div class="chat-transcript" id="chat-transcript" aria-live="polite"></div>
-          <form id="chatbot-form" class="chatbot-form">
-            <input name="message" placeholder="Book me an ambulance now" required autocomplete="off">
-            <button type="submit" class="cta-primary">Send</button>
-          </form>
-        </div>
-      </section>
-    </main>
-
-    <footer class="site-footer">
-      <div class="footer-row">
-        <p>HindCare MedTech — Phase 1 prototype. Fictional data only.</p>
-        <label class="role-switcher">
-          <span>Team access (demo, not a login)</span>
-          <select id="demo-role">
-            <option value="">Patient view</option>
-            <option value="hospital">Hospital admin</option>
-            <option value="fleet">Fleet owner</option>
-            <option value="admin">Admin</option>
-          </select>
-        </label>
-      </div>
-    </footer>
+    </div>
 
     <script src="/app.js"></script>
   </body>
