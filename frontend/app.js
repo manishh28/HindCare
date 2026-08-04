@@ -152,6 +152,10 @@ document.getElementById("destination-select").addEventListener("change", () => {
 function renderAmbulances() {
   const list = document.getElementById("ambulance-list");
   const canManage = state.role === "fleet" || state.role === "admin";
+  // Driver name and personal phone are only useful to roles that actually
+  // coordinate dispatch — showing them to every site visitor would let
+  // anyone call a driver directly, bypassing dispatch entirely.
+  const canSeeDriverInfo = state.role === "fleet" || state.role === "admin";
   const statuses = ["available", "busy", "maintenance", "offline"];
 
   if (!state.ambulances.length) {
@@ -166,7 +170,7 @@ function renderAmbulances() {
         <span class="badge ${ambulance.status}">${ambulance.status}</span>
       </div>
       <p>${ambulance.type} ambulance</p>
-      <p class="item-meta">${ambulance.driverName} — ${ambulance.phone}</p>
+      ${canSeeDriverInfo ? `<p class="item-meta">${ambulance.driverName} — ${ambulance.phone}</p>` : ""}
       ${canManage ? `
         <label class="inline-select">
           Update status
@@ -209,9 +213,27 @@ const BOOKING_NEXT_STEPS = {
   cancelled: []
 };
 
+// Friendlier, plain-language labels for the raw status values the API uses.
+const STATUS_LABELS = {
+  requested: "Finding ambulance",
+  assigned: "Assigned",
+  on_route: "En route",
+  completed: "Completed",
+  cancelled: "Cancelled"
+};
+
+function statusChip(status) {
+  const label = STATUS_LABELS[status] || status;
+  return `<span class="status-chip status-${status}">${label}</span>`;
+}
+
 function renderBookings() {
   const list = document.getElementById("booking-list");
   const canManage = state.role === "fleet" || state.role === "admin";
+  // Patient name and phone are personal information — only show them to
+  // roles that legitimately need them for dispatch, never to any visitor
+  // who happens to load the public network view.
+  const canSeePatientInfo = state.role === "fleet" || state.role === "admin" || state.role === "hospital";
 
   if (!state.bookings.length) {
     list.innerHTML = `<p class="empty-note">No bookings yet.</p>`;
@@ -224,8 +246,8 @@ function renderBookings() {
     return `
     <article class="item" data-booking-id="${booking.id}">
       <div class="item-header">
-        <strong>#${booking.id} — ${booking.patientName}</strong>
-        <span class="badge ${booking.status}">${booking.status.replace("_", " ")}</span>
+        <strong>#${booking.id}${canSeePatientInfo ? ` — ${booking.patientName}` : ""}</strong>
+        ${statusChip(booking.status)}
       </div>
       <p>${booking.pickup} → ${booking.destination}</p>
       <p class="item-meta">
@@ -265,11 +287,37 @@ function renderBookings() {
 // blank the whole page.
 // ---------------------------------------------------------------------
 
+// ---------------------------------------------------------------------
+// Honest stats strip — computed from real (if small) demo data, never
+// invented numbers.
+// ---------------------------------------------------------------------
+
+function renderHeroStats() {
+  const fleetEl = document.getElementById("stat-fleet");
+  if (!fleetEl) return; // stats strip not on this page
+
+  const fleetReady = state.ambulances.filter(a => a.status === "available").length;
+  const hospitalsApproved = state.hospitals.filter(h => h.status === "approved").length;
+  const cities = new Set(state.hospitals.filter(h => h.status === "approved").map(h => h.city)).size;
+  const distances = state.bookings
+    .map(b => b.dispatchDistanceKm)
+    .filter(value => typeof value === "number");
+  const avgDistance = distances.length
+    ? `${(distances.reduce((sum, d) => sum + d, 0) / distances.length).toFixed(1)} km`
+    : "—";
+
+  fleetEl.textContent = fleetReady;
+  document.getElementById("stat-hospitals").textContent = hospitalsApproved;
+  document.getElementById("stat-cities").textContent = cities;
+  document.getElementById("stat-distance").textContent = avgDistance;
+}
+
 async function refreshHospitals() {
   try {
     state.hospitals = await api("/api/hospitals");
     renderHospitals();
     populateDestinationSelect(guessCityFromPickup(document.getElementById("pickup-input").value));
+    renderHeroStats();
   } catch (error) {
     document.getElementById("hospital-list").innerHTML = `<p class="load-error">${error.message}</p>`;
   }
@@ -280,6 +328,7 @@ async function refreshAmbulances() {
     state.ambulances = await api("/api/ambulances");
     renderAmbulances();
     renderBookings();
+    renderHeroStats();
   } catch (error) {
     document.getElementById("ambulance-list").innerHTML = `<p class="load-error">${error.message}</p>`;
   }
@@ -289,6 +338,7 @@ async function refreshBookings() {
   try {
     state.bookings = await api("/api/bookings");
     renderBookings();
+    renderHeroStats();
   } catch (error) {
     document.getElementById("booking-list").innerHTML = `<p class="load-error">${error.message}</p>`;
   }
@@ -474,6 +524,46 @@ document.getElementById("chatbot-form").addEventListener("submit", async event =
 });
 
 appendChatMessage("bot", "Hi! I can help book an ambulance, find nearby hospitals, or route you to support. What do you need?");
+
+// ---------------------------------------------------------------------
+// Track your booking — an honest stand-in for live GPS tracking: looks
+// up the real booking status by ID + phone through a backend endpoint
+// that only returns a match for the correct pair, so a stranger can't
+// pull up someone else's booking just by guessing a small ID number.
+// The "estimated arrival" is a rough calculation from dispatch distance,
+// not a live GPS feed, and is labeled as such.
+// ---------------------------------------------------------------------
+
+function estimatedArrivalMinutes(distanceKm) {
+  if (typeof distanceKm !== "number") return null;
+  const assumedSpeedKmh = 40; // rough urban emergency-response average — an estimate, not a live calculation
+  return Math.max(1, Math.round((distanceKm / assumedSpeedKmh) * 60));
+}
+
+document.getElementById("tracker-form").addEventListener("submit", async event => {
+  event.preventDefault();
+  const { bookingId, phone } = formToObject(event.currentTarget);
+  const result = document.getElementById("tracker-result");
+  result.innerHTML = `<p>Looking up…</p>`;
+
+  try {
+    const booking = await api(`/api/bookings/lookup?id=${encodeURIComponent(bookingId)}&phone=${encodeURIComponent(phone)}`);
+    const eta = estimatedArrivalMinutes(booking.dispatchDistanceKm);
+    const showEta = eta != null && !["completed", "cancelled"].includes(booking.status);
+
+    result.innerHTML = `
+      <div class="tracker-row"><span>Status</span>${statusChip(booking.status)}</div>
+      <div class="tracker-row"><span>Destination</span><span>${booking.destination}</span></div>
+      ${booking.ambulance
+        ? `<div class="tracker-row"><span>Ambulance</span><span>${booking.ambulance.registrationNumber}</span></div>
+           <div class="tracker-row"><span>Driver</span><span>${booking.ambulance.driverName}</span></div>`
+        : `<div class="tracker-row"><span>Ambulance</span><span>Not yet assigned</span></div>`}
+      ${showEta ? `<div class="tracker-row"><span>Est. arrival</span><span>~${eta} min (approx.)</span></div>` : ""}
+    `;
+  } catch (error) {
+    result.innerHTML = `<p>${error.message}</p>`;
+  }
+});
 
 refreshDashboard().catch(error => {
   document.body.insertAdjacentHTML("afterbegin", `<p class="load-error">${error.message}</p>`);

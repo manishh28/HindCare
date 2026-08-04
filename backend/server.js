@@ -168,6 +168,18 @@ function requireDemoRole(req, res, allowedRoles) {
   return true;
 }
 
+// Non-blocking version for redacting fields rather than rejecting the
+// whole request — e.g. hiding driver/patient contact details from the
+// public list views instead of a hard 403.
+function hasDemoRole(req, allowedRoles) {
+  const role = String(req.headers["x-demo-role"] || "").toLowerCase();
+  return allowedRoles.includes(role);
+}
+
+function lastDigits(value, n = 10) {
+  return String(value || "").replace(/\D/g, "").slice(-n);
+}
+
 function geocodePickup(text) {
   const lower = String(text || "").toLowerCase();
   for (const area of KNOWN_AREAS) {
@@ -398,7 +410,11 @@ async function handleApi(req, res) {
   // ---- Ambulances -----------------------------------------------------
 
   if (req.method === "GET" && url.pathname === "/api/ambulances") {
-    sendJson(req, res, 200, db.ambulances);
+    const canSeeDriverInfo = hasDemoRole(req, ["fleet", "admin"]);
+    const ambulances = canSeeDriverInfo
+      ? db.ambulances
+      : db.ambulances.map(({ driverName, phone, ...rest }) => rest);
+    sendJson(req, res, 200, ambulances);
     return;
   }
 
@@ -457,7 +473,42 @@ async function handleApi(req, res) {
   // ---- Bookings -------------------------------------------------------
 
   if (req.method === "GET" && url.pathname === "/api/bookings") {
-    sendJson(req, res, 200, db.bookings);
+    const canSeePatientInfo = hasDemoRole(req, ["fleet", "admin", "hospital"]);
+    const bookings = canSeePatientInfo
+      ? db.bookings
+      : db.bookings.map(({ patientName, phone, ...rest }) => rest);
+    sendJson(req, res, 200, bookings);
+    return;
+  }
+
+  // Lets a patient check their own booking without exposing everyone
+  // else's — the phone number acts as the credential, so this is safe to
+  // leave open even though the general list above is redacted.
+  if (req.method === "GET" && url.pathname === "/api/bookings/lookup") {
+    const id = Number(url.searchParams.get("id"));
+    const phone = url.searchParams.get("phone") || "";
+    const booking = db.bookings.find(
+      item => item.id === id && lastDigits(item.phone) === lastDigits(phone) && lastDigits(phone).length > 0
+    );
+
+    if (!booking) {
+      sendJson(req, res, 404, { error: "No booking found for that ID and phone number." });
+      return;
+    }
+
+    const ambulance = booking.ambulanceId
+      ? db.ambulances.find(item => item.id === booking.ambulanceId)
+      : null;
+
+    sendJson(req, res, 200, {
+      id: booking.id,
+      status: booking.status,
+      destination: booking.destination,
+      dispatchDistanceKm: booking.dispatchDistanceKm,
+      ambulance: ambulance
+        ? { registrationNumber: ambulance.registrationNumber, driverName: ambulance.driverName }
+        : null
+    });
     return;
   }
 
