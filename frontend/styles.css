@@ -2,6 +2,8 @@
   color-scheme: light;
 
   /* ---- palette ---- */
+  /* bright, light backgrounds throughout — dark is reserved for the
+     live-dispatch module only, never the whole page */
   --bg: #f6f7f9;
   --surface: #ffffff;
   --surface-soft: #f1f3f5;
@@ -10,16 +12,24 @@
   --line: #dce1e6;
   --line-strong: #c3cad1;
 
+  /* medical red — primary action color */
   --siren: #e11d2e;
   --siren-dark: #b3121f;
   --siren-tint: #fdeaec;
 
+  /* trust blue — secondary / informational */
   --teal: #0f766e;
   --teal-dark: #0b5b54;
   --teal-tint: #e7f5f3;
 
   --signal: #0ea5e9;
   --signal-dark: #0a7cb3;
+  --signal-tint: #e7f6fd;
+
+  /* success green — completed states, positive confirmations */
+  --success: #15803d;
+  --success-dark: #0f5c2c;
+  --success-tint: #e7f6ec;
 
   --amber: #b45300;
   --amber-tint: #fdf1e2;
@@ -768,7 +778,7 @@ select:focus {
   color: #fff;
   cursor: pointer;
   box-shadow: 0 14px 28px rgba(11, 18, 32, 0.24);
-  animation: fab-bob 2.8s ease-in-out infinite;
+  transition: transform 160ms ease, box-shadow 160ms ease;
 }
 
 .fab svg {
@@ -777,8 +787,12 @@ select:focus {
 }
 
 .fab:hover {
-  animation-play-state: paused;
-  transform: translateY(-4px);
+  transform: translateY(-3px);
+  box-shadow: 0 18px 34px rgba(11, 18, 32, 0.3);
+}
+
+.fab:active {
+  transform: translateY(-1px) scale(0.96);
 }
 
 .fab-chat {
@@ -787,18 +801,6 @@ select:focus {
 
 .fab-partner {
   background: var(--siren);
-  animation-delay: 0.4s;
-}
-
-@keyframes fab-bob {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-9px); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .fab {
-    animation: none;
-  }
 }
 
 /* ---- overlay panels (assistant + partner sign-up) ---- */
@@ -972,6 +974,236 @@ select:focus {
   font-size: 13px;
 }
 
+/* ---- accessibility: skip link ---- */
+.skip-link {
+  position: absolute;
+  top: -48px;
+  left: 12px;
+  z-index: 100;
+  padding: 10px 16px;
+  background: var(--ink);
+  color: #fff;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 14px;
+  transition: top 120ms ease;
+}
+
+.skip-link:focus {
+  top: 12px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---- logo mark ---- */
+.brand-mark {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
+}
+
+/* ---- status chips ---- */
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.status-chip::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.status-requested { background: var(--surface-soft); color: var(--muted); }
+.status-assigned { background: var(--amber-tint); color: var(--amber); }
+.status-on_route { background: var(--signal-tint); color: var(--signal-dark); }
+.status-completed { background: var(--success-tint); color: var(--success-dark); }
+.status-cancelled { background: var(--siren-tint); color: var(--siren-dark); }
+
+/* ---- honest stats strip ---- */
+.stats-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin: 20px 0 8px;
+}
+
+.stat-tile {
+  padding: 14px 16px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  text-align: center;
+}
+
+.stat-tile strong {
+  display: block;
+  font-family: var(--font-display);
+  font-size: 24px;
+  color: var(--ink);
+}
+
+.stat-tile span {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* ---- 3-step process ---- */
+.step-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin: 18px 0 26px;
+}
+
+.step-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px;
+  background: var(--surface-soft);
+  border-radius: var(--radius);
+}
+
+.step-number {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--siren);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.step-item h4 {
+  margin: 0 0 2px;
+  font-size: 14px;
+}
+
+.step-item p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* ---- live dispatch tracker (inside the dark scene card) ---- */
+.tracker-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 8px;
+  margin: 14px 0;
+}
+
+.tracker-form input {
+  min-height: 38px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid var(--console-line);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--console-ink);
+  font: inherit;
+  font-size: 13px;
+}
+
+.tracker-form input::placeholder {
+  color: var(--console-muted);
+}
+
+.tracker-form button {
+  min-height: 38px;
+  padding: 0 14px;
+  border-radius: 8px;
+  border: 0;
+  background: var(--siren);
+  color: #fff;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.tracker-result {
+  margin-top: 4px;
+  padding: 12px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--console-line);
+  font-size: 13px;
+  color: var(--console-ink);
+  display: grid;
+  gap: 4px;
+}
+
+.tracker-result:empty {
+  display: none;
+}
+
+.tracker-result .tracker-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.tracker-result .tracker-row span:first-child {
+  color: var(--console-muted);
+}
+
+/* ---- emergency tips ---- */
+.tips-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.tip-card {
+  padding: 16px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.tip-card h4 {
+  margin: 0 0 8px;
+  font-size: 15px;
+}
+
+.tip-card ul {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.tip-disclaimer {
+  margin-top: 14px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
 /* ---- responsive ---- */
 @media (max-width: 900px) {
   .hero {
@@ -981,6 +1213,19 @@ select:focus {
 
   .network-grid,
   .partner-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .stats-strip,
+  .step-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .tips-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .tracker-form {
     grid-template-columns: 1fr;
   }
 
@@ -1026,5 +1271,11 @@ select:focus {
 
   .modal-panel {
     padding: 22px;
+  }
+
+  .stats-strip,
+  .step-list,
+  .tips-grid {
+    grid-template-columns: 1fr;
   }
 }

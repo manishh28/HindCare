@@ -11,9 +11,11 @@
     <link rel="stylesheet" href="/styles.css">
   </head>
   <body>
+    <a class="skip-link" href="#top">Skip to main content</a>
+
     <header class="topbar">
       <a class="brand-lockup" href="#top">
-        <img src="/assets/hindcare-logo.png" alt="" class="brand-logo">
+        <img src="/assets/hindcare-logo.png" alt="HindCare MedTech logo" class="brand-mark">
         <span class="brand-name">HindCare</span>
       </a>
       <nav class="topbar-nav">
@@ -25,31 +27,65 @@
     </header>
 
     <main id="top">
-      <!-- ============ HERO: dispatch console ============ -->
+      <!-- ============ HERO ============ -->
       <section class="hero">
         <div class="hero-copy">
-          <p class="eyebrow">[ 24×7 EMERGENCY DISPATCH ]</p>
-          <h1>Get an ambulance moving in minutes, not calls.</h1>
-          <p class="hero-sub">Tell us where you are. We match you with the nearest available ambulance and the right hospital — no hold music, no runaround.</p>
+          <p class="eyebrow">[ EMERGENCY AMBULANCE BOOKING ]</p>
+          <h1>Every minute matters.</h1>
+          <p class="hero-sub">Share your location and we match you with the nearest available ambulance and hospital — then you can follow the booking status the whole way.</p>
           <div class="hero-actions">
             <a class="cta-primary" href="#quick-book">
               <span class="pulse-dot" aria-hidden="true"></span>
-              Book ambulance now
+              Book Ambulance
             </a>
-            <a class="cta-secondary" href="tel:+911800000000">Call dispatch line</a>
+            <a class="cta-secondary" href="#quick-book-track">Track your booking</a>
           </div>
           <p class="hero-fineprint">If this is a life-threatening emergency, also call your local emergency number.</p>
+
+          <div class="stats-strip" id="hero-stats" aria-label="Current network status">
+            <div class="stat-tile">
+              <strong id="stat-fleet">—</strong>
+              <span>Ambulances ready</span>
+            </div>
+            <div class="stat-tile">
+              <strong id="stat-hospitals">—</strong>
+              <span>Hospitals in network</span>
+            </div>
+            <div class="stat-tile">
+              <strong id="stat-cities">—</strong>
+              <span>Cities covered</span>
+            </div>
+            <div class="stat-tile">
+              <strong id="stat-distance">—</strong>
+              <span>Avg. dispatch distance</span>
+            </div>
+          </div>
         </div>
 
-        <div class="ambulance-scene" aria-hidden="true">
+        <div class="ambulance-scene" aria-label="Live dispatch status">
           <div class="scene-head">
             <span class="scene-dot"></span>
-            EN ROUTE
+            LIVE DISPATCH
           </div>
-          <div class="scene-stage">
+          <div class="scene-stage" aria-hidden="true">
             <div class="scene-road"></div>
             <div class="ambulance">
               <svg viewBox="0 0 180 90" xmlns="http://www.w3.org/2000/svg" overflow="visible">
+                <defs>
+                  <linearGradient id="bodyShade" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#ffffff" />
+                    <stop offset="100%" stop-color="#dbe1e8" />
+                  </linearGradient>
+                  <linearGradient id="cabShade" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#ffffff" />
+                    <stop offset="100%" stop-color="#d4dae2" />
+                  </linearGradient>
+                  <radialGradient id="tireShade" cx="35%" cy="32%" r="70%">
+                    <stop offset="0%" stop-color="#3d4757" />
+                    <stop offset="100%" stop-color="#11141b" />
+                  </radialGradient>
+                </defs>
+
                 <ellipse cx="95" cy="78" rx="62" ry="4" fill="rgba(0,0,0,0.28)" />
 
                 <line class="speed-line" x1="0" y1="34" x2="14" y2="34" stroke="#e6ecf5" stroke-width="3" stroke-linecap="round" style="animation-delay:0s" />
@@ -58,60 +94,113 @@
 
                 <g class="amb-suspension">
                   <!-- patient compartment -->
-                  <rect x="20" y="16" width="100" height="48" rx="7" fill="#fbfcfe" stroke="#c7ced6" />
-                  <line x1="24" y1="18" x2="24" y2="62" stroke="#c7ced6" />
-                  <circle cx="27" cy="40" r="1.4" fill="#8a94a3" />
-                  <rect x="100" y="22" width="14" height="12" rx="2" fill="#bcd9ff" opacity="0.85" />
-                  <rect x="20" y="48" width="100" height="7" fill="#1d4ed8" opacity="0.85" />
-                  <rect x="52" y="30" width="16" height="6" fill="var(--siren)" />
-                  <rect x="57" y="25" width="6" height="16" fill="var(--siren)" />
+                  <rect x="18" y="14" width="104" height="50" rx="6" fill="url(#bodyShade)" stroke="#aab3bd" stroke-width="1" />
+                  <line x1="23" y1="16" x2="23" y2="62" stroke="#aab3bd" />
+                  <circle cx="26" cy="40" r="1.3" fill="#6b7482" />
+                  <rect x="99" y="20" width="15" height="13" rx="2" fill="#a9d4ff" />
+                  <rect x="99" y="20" width="15" height="5" fill="#ffffff" opacity="0.4" />
+
+                  <!-- side stripe -->
+                  <rect x="18" y="45" width="104" height="9" fill="#1d4ed8" />
+                  <rect x="18" y="45" width="104" height="2" fill="#0f2f9e" opacity="0.5" />
+
+                  <!-- red cross emblem -->
+                  <rect x="50" y="26" width="18" height="7" rx="1" fill="var(--siren)" />
+                  <rect x="55.5" y="20.5" width="7" height="18" rx="1" fill="var(--siren)" />
+
+                  <!-- side lettering -->
+                  <text x="71" y="60" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="5.2" letter-spacing="0.5" fill="#6b7482">AMBULANCE</text>
 
                   <!-- light bar -->
-                  <rect x="32" y="10" width="76" height="6" rx="3" fill="#1f2937" />
-                  <rect class="light-a" x="36" y="11" width="14" height="4" rx="1" fill="#e11d2e" />
-                  <rect class="light-b" x="54" y="11" width="14" height="4" rx="1" fill="#1d4ed8" />
-                  <rect class="light-b" x="72" y="11" width="14" height="4" rx="1" fill="#e11d2e" />
-                  <rect class="light-a" x="90" y="11" width="14" height="4" rx="1" fill="#1d4ed8" />
+                  <rect x="29" y="7" width="82" height="7" rx="3.5" fill="#1f2937" />
+                  <rect class="light-a" x="33" y="8.3" width="16" height="4.4" rx="2" fill="#e11d2e" />
+                  <rect class="light-b" x="53" y="8.3" width="16" height="4.4" rx="2" fill="#1d4ed8" />
+                  <rect class="light-b" x="73" y="8.3" width="16" height="4.4" rx="2" fill="#e11d2e" />
+                  <rect class="light-a" x="93" y="8.3" width="16" height="4.4" rx="2" fill="#1d4ed8" />
 
                   <!-- cab -->
-                  <path d="M120,64 L120,24 Q120,18 126,18 L148,18 L162,38 L162,64 Z" fill="#fbfcfe" stroke="#c7ced6" />
-                  <path d="M126,22 L146,22 L157,38 L126,38 Z" fill="#bcd9ff" opacity="0.9" />
-                  <rect x="117" y="26" width="4" height="6" rx="1" fill="#374151" />
-                  <rect x="157" y="55" width="8" height="8" rx="2" fill="#374151" />
-                  <circle cx="160" cy="47" r="3" fill="#ffe38a" />
+                  <path d="M122,64 L122,23 Q122,17 128,17 L147,17 L163,39 L163,64 Z" fill="url(#cabShade)" stroke="#aab3bd" stroke-width="1" />
+                  <path d="M128,21 L145,21 L157,39 L128,39 Z" fill="#bcd9ff" />
+                  <path d="M130,23 L138,23 L133,33 L128,33 Z" fill="#ffffff" opacity="0.4" />
+                  <rect x="119" y="25" width="4" height="7" rx="1.5" fill="#374151" />
+
+                  <!-- front end -->
+                  <rect x="157" y="42" width="6" height="4" rx="1" fill="#4b5563" />
+                  <rect x="158" y="55" width="9" height="9" rx="2" fill="#374151" />
+                  <ellipse cx="161.5" cy="47" rx="3.4" ry="2.6" fill="#ffe38a" />
 
                   <!-- wheels -->
-                  <g class="wheel-spin" style="transform-origin: 48px 70px">
-                    <circle cx="48" cy="70" r="13" fill="#1f2937" />
-                    <circle cx="48" cy="70" r="5" fill="#cbd5e1" />
-                    <line x1="48" y1="61" x2="48" y2="79" stroke="#94a3b8" stroke-width="1.5" />
-                    <line x1="39" y1="70" x2="57" y2="70" stroke="#94a3b8" stroke-width="1.5" />
+                  <g class="wheel-spin" style="transform-origin: 47px 70px">
+                    <circle cx="47" cy="70" r="14" fill="url(#tireShade)" />
+                    <circle cx="47" cy="70" r="7.4" fill="#e5e9ee" />
+                    <circle cx="47" cy="70" r="2.3" fill="#8b95a1" />
+                    <line x1="47" y1="63" x2="47" y2="77" stroke="#aab3bd" stroke-width="1.3" />
+                    <line x1="40" y1="70" x2="54" y2="70" stroke="#aab3bd" stroke-width="1.3" />
+                    <line x1="42" y1="65" x2="52" y2="75" stroke="#aab3bd" stroke-width="1" />
+                    <line x1="52" y1="65" x2="42" y2="75" stroke="#aab3bd" stroke-width="1" />
                   </g>
-                  <g class="wheel-spin" style="transform-origin: 140px 70px">
-                    <circle cx="140" cy="70" r="13" fill="#1f2937" />
-                    <circle cx="140" cy="70" r="5" fill="#cbd5e1" />
-                    <line x1="140" y1="61" x2="140" y2="79" stroke="#94a3b8" stroke-width="1.5" />
-                    <line x1="131" y1="70" x2="149" y2="70" stroke="#94a3b8" stroke-width="1.5" />
+                  <g class="wheel-spin" style="transform-origin: 141px 70px">
+                    <circle cx="141" cy="70" r="14" fill="url(#tireShade)" />
+                    <circle cx="141" cy="70" r="7.4" fill="#e5e9ee" />
+                    <circle cx="141" cy="70" r="2.3" fill="#8b95a1" />
+                    <line x1="141" y1="63" x2="141" y2="77" stroke="#aab3bd" stroke-width="1.3" />
+                    <line x1="134" y1="70" x2="148" y2="70" stroke="#aab3bd" stroke-width="1.3" />
+                    <line x1="136" y1="65" x2="146" y2="75" stroke="#aab3bd" stroke-width="1" />
+                    <line x1="146" y1="65" x2="136" y2="75" stroke="#aab3bd" stroke-width="1" />
                   </g>
+
+                  <!-- fenders (sit above wheels, over the body edge) -->
+                  <path d="M33,64 a14,15 0 0 1 28,0" fill="none" stroke="#aab3bd" stroke-width="1" />
+                  <path d="M127,64 a14,15 0 0 1 28,0" fill="none" stroke="#aab3bd" stroke-width="1" />
                 </g>
               </svg>
             </div>
           </div>
-          <p class="scene-caption">Matched with the nearest available ambulance — dispatched instantly.</p>
+
+          <form id="tracker-form" class="tracker-form" aria-label="Track your booking">
+            <input name="bookingId" id="quick-book-track" type="number" min="1" placeholder="Booking ID" required>
+            <input name="phone" placeholder="Phone on the booking" required>
+            <button type="submit">Track</button>
+          </form>
+          <div class="tracker-result" id="tracker-result" role="status"></div>
         </div>
       </section>
 
       <div class="pulse-divider" aria-hidden="true">
         <svg viewBox="0 0 1200 40" preserveAspectRatio="none">
-          <path class="pulse-line" d="M0,20 L440,20 L460,4 L480,36 L500,20 L1200,20" />
+          <path class="pulse-line" d="M0,20 L370,20 L384,14 L396,20 L420,20 L428,26 L438,2 L448,36 L460,20 L480,20 L490,12 L500,20 L1200,20" />
         </svg>
       </div>
 
       <!-- ============ QUICK BOOK ============ -->
       <section class="panel-shell" id="quick-book">
-        <p class="eyebrow">[ CODE 3 — EMERGENCY BOOKING ]</p>
+        <p class="eyebrow">[ EMERGENCY BOOKING ]</p>
         <h2>Request an ambulance</h2>
-        <p class="section-sub">Four fields. We geo-match the nearest available ambulance and suggest the closest hospital automatically.</p>
+        <p class="section-sub">Three steps. We geo-match the nearest available ambulance and suggest the closest hospital automatically.</p>
+
+        <div class="step-list">
+          <div class="step-item">
+            <span class="step-number">1</span>
+            <div>
+              <h4>Choose location</h4>
+              <p>Tell us who needs help and where to pick them up.</p>
+            </div>
+          </div>
+          <div class="step-item">
+            <span class="step-number">2</span>
+            <div>
+              <h4>Ambulance assigned</h4>
+              <p>We match the nearest available ambulance automatically.</p>
+            </div>
+          </div>
+          <div class="step-item">
+            <span class="step-number">3</span>
+            <div>
+              <h4>Reach hospital</h4>
+              <p>Track status as your booking moves toward the hospital.</p>
+            </div>
+          </div>
+        </div>
 
         <form id="booking-form" class="booking-form">
           <div class="field-row">
@@ -163,14 +252,14 @@
             </label>
           </fieldset>
 
-          <button type="submit" class="cta-primary cta-block">Request ambulance now</button>
+          <button type="submit" class="cta-primary cta-block">Book Ambulance Now</button>
         </form>
         <p class="form-result" id="booking-result" role="status"></p>
       </section>
 
       <div class="pulse-divider" aria-hidden="true">
         <svg viewBox="0 0 1200 40" preserveAspectRatio="none">
-          <path class="pulse-line" d="M0,20 L440,20 L460,4 L480,36 L500,20 L1200,20" />
+          <path class="pulse-line" d="M0,20 L370,20 L384,14 L396,20 L420,20 L428,26 L438,2 L448,36 L460,20 L480,20 L490,12 L500,20 L1200,20" />
         </svg>
       </div>
 
@@ -192,6 +281,59 @@
             <div class="list" id="booking-list"></div>
           </div>
         </div>
+      </section>
+
+      <div class="pulse-divider" aria-hidden="true">
+        <svg viewBox="0 0 1200 40" preserveAspectRatio="none">
+          <path class="pulse-line" d="M0,20 L370,20 L384,14 L396,20 L420,20 L428,26 L438,2 L448,36 L460,20 L480,20 L490,12 L500,20 L1200,20" />
+        </svg>
+      </div>
+
+      <!-- ============ EMERGENCY TIPS ============ -->
+      <section class="panel-shell" id="tips">
+        <p class="eyebrow">[ WHILE YOU WAIT ]</p>
+        <h2>What to do until the ambulance arrives</h2>
+        <p class="section-sub">General guidance for common emergencies — not a substitute for professional medical care.</p>
+
+        <div class="tips-grid">
+          <article class="tip-card">
+            <h4>Heart attack</h4>
+            <ul>
+              <li>Have them sit down, stay calm, and rest</li>
+              <li>Loosen tight clothing</li>
+              <li>Only give their own prescribed medicine, if any</li>
+              <li>Note when symptoms started</li>
+            </ul>
+          </article>
+          <article class="tip-card">
+            <h4>Stroke — think FAST</h4>
+            <ul>
+              <li><strong>Face:</strong> ask them to smile — does one side droop?</li>
+              <li><strong>Arms:</strong> ask them to raise both — does one drift down?</li>
+              <li><strong>Speech:</strong> is it slurred or strange?</li>
+              <li><strong>Time:</strong> note when it started, call right away</li>
+            </ul>
+          </article>
+          <article class="tip-card">
+            <h4>Road accident</h4>
+            <ul>
+              <li>Only move people if there's immediate danger</li>
+              <li>Turn on hazard lights, warn oncoming traffic</li>
+              <li>Share your exact location when you call for help</li>
+              <li>Keep the injured person still and calm</li>
+            </ul>
+          </article>
+          <article class="tip-card">
+            <h4>Breathing difficulty</h4>
+            <ul>
+              <li>Help them sit upright, not lying down</li>
+              <li>Loosen clothing around neck and chest</li>
+              <li>Help them use their own inhaler, if prescribed</li>
+              <li>Stay calm — anxiety can worsen breathlessness</li>
+            </ul>
+          </article>
+        </div>
+        <p class="tip-disclaimer">This is general guidance only. It does not replace calling emergency services or seeing a doctor.</p>
       </section>
     </main>
 
