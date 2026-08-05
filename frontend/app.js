@@ -70,7 +70,7 @@ function renderHospitals() {
         <span class="badge ${hospital.status}">${hospital.status}</span>
       </div>
       <p>${hospital.address}</p>
-      <p class="item-meta">${hospital.phone}</p>
+      <p class="item-meta">${hospital.phone}${hospital.email ? ` — ${hospital.email}` : ""}</p>
       <p class="availability">${hospital.availableBeds}/${hospital.totalBeds} beds available</p>
       ${isAdmin && hospital.status === "pending" ? `
         <div class="row-actions">
@@ -170,7 +170,7 @@ function renderAmbulances() {
         <span class="badge ${ambulance.status}">${ambulance.status}</span>
       </div>
       <p>${ambulance.type} ambulance</p>
-      ${canSeeDriverInfo ? `<p class="item-meta">${ambulance.driverName} — ${ambulance.phone}</p>` : ""}
+      ${canSeeDriverInfo ? `<p class="item-meta">${ambulance.driverName} — ${ambulance.phone}${ambulance.email ? ` — ${ambulance.email}` : ""}</p>` : ""}
       ${canManage ? `
         <label class="inline-select">
           Update status
@@ -357,7 +357,10 @@ async function refreshDashboard() {
 // The partner panel's actual show/hide target is its backdrop wrapper
 // (so the dark overlay + centering both toggle together); the chat
 // panel toggles itself directly.
-const PANEL_TARGETS = { "partner-panel": "partner-panel-backdrop" };
+const PANEL_TARGETS = {
+  "partner-panel": "partner-panel-backdrop",
+  "network-panel": "network-panel-backdrop"
+};
 
 function panelElement(key) {
   return document.getElementById(PANEL_TARGETS[key] || key);
@@ -394,6 +397,7 @@ document.addEventListener("keydown", event => {
   if (event.key === "Escape") {
     closePanel("chat-panel");
     closePanel("partner-panel");
+    closePanel("network-panel");
   }
 });
 
@@ -437,17 +441,28 @@ document.getElementById("booking-form").addEventListener("submit", async event =
 });
 
 // ---------------------------------------------------------------------
-// Partner onboarding forms
+// Partner onboarding — a dropdown picks which single screen shows,
+// instead of both partner types being visible at once.
 // ---------------------------------------------------------------------
 
-document.querySelectorAll("[data-toggle-form]").forEach(button => {
-  button.addEventListener("click", () => {
-    const form = document.getElementById(button.getAttribute("data-toggle-form"));
-    const isHidden = form.classList.toggle("hidden");
-    button.textContent = isHidden
-      ? button.getAttribute("data-toggle-form") === "hospital-partner-form" ? "Register hospital" : "Register ambulance"
-      : "Cancel";
+const PARTNER_SCREENS = {
+  hospital: "hospital-partner-screen",
+  ambulance: "ambulance-partner-screen"
+};
+
+document.getElementById("partner-type-select").addEventListener("change", event => {
+  const emptyNote = document.getElementById("partner-empty-note");
+  Object.values(PARTNER_SCREENS).forEach(id => {
+    document.getElementById(id).classList.add("hidden");
   });
+
+  const screenId = PARTNER_SCREENS[event.target.value];
+  if (screenId) {
+    document.getElementById(screenId).classList.remove("hidden");
+    emptyNote.classList.add("hidden");
+  } else {
+    emptyNote.classList.remove("hidden");
+  }
 });
 
 document.getElementById("hospital-partner-form").addEventListener("submit", async event => {
