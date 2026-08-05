@@ -55,7 +55,12 @@
               <span class="pulse-dot" aria-hidden="true"></span>
               Book Ambulance
             </a>
-            <a class="cta-secondary" href="#quick-book-track">Track your booking</a>
+            <a class="cta-secondary cta-call" href="tel:+911800000000">
+              <svg class="cta-call-icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                <path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.6 21 3 13.4 3 4c0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.4 0 .8-.2 1L6.6 10.8z" fill="currentColor" />
+              </svg>
+              +91 1800-000-000
+            </a>
           </div>
           <p class="hero-fineprint">If this is a life-threatening emergency, also call your local emergency number.</p>
 
@@ -164,7 +169,7 @@
           </div>
 
           <form id="tracker-form" class="tracker-form" aria-label="Track your booking">
-            <input name="bookingId" id="quick-book-track" type="number" min="1" placeholder="Booking ID" required>
+            <input name="bookingId" id="booking-track-id" type="number" min="1" placeholder="Booking ID" required>
             <input name="phone" placeholder="Phone on the booking" required>
             <button type="submit">Track</button>
           </form>
@@ -318,8 +323,48 @@
     </main>
 
     <footer class="site-footer">
-      <div class="footer-row">
-        <p>HindCare MedTech</p>
+      <div class="footer-inner">
+        <div class="footer-brand-block">
+          <p class="footer-brand-name">HindCare MedTech</p>
+          <p class="footer-tagline">Connecting patients with ambulances and hospitals when every minute matters.</p>
+          <a class="footer-hotline" href="tel:+911800000000">
+            Emergency line (placeholder):
+            <strong>+91 1800-000-000</strong>
+          </a>
+        </div>
+
+        <nav class="footer-col" aria-label="Quick links">
+          <h3 class="footer-heading">Quick links</h3>
+          <ul class="footer-links">
+            <li><a href="#quick-book">Book ambulance</a></li>
+            <li><button type="button" class="footer-link-button" data-open="network-panel">Network status</button></li>
+            <li><a href="#tips">Emergency tips</a></li>
+            <li><button type="button" class="footer-link-button" data-open="chat-panel">Assistant</button></li>
+          </ul>
+        </nav>
+
+        <nav class="footer-col" aria-label="Company">
+          <h3 class="footer-heading">Company</h3>
+          <ul class="footer-links">
+            <li><button type="button" class="footer-link-button" data-open="contact-panel">Contact us</button></li>
+            <li><button type="button" class="footer-link-button" data-open="partner-panel">Partner with us</button></li>
+            <li><button type="button" class="footer-link-button" data-open="terms-panel">Terms &amp; conditions</button></li>
+            <li><button type="button" class="footer-link-button" data-open="privacy-panel">Privacy policy</button></li>
+          </ul>
+        </nav>
+
+        <div class="footer-col footer-col-contact">
+          <h3 class="footer-heading">Get in touch</h3>
+          <ul class="footer-contact-list">
+            <li><a href="mailto:support@hindcare.example">support@hindcare.example</a></li>
+            <li><a href="mailto:partners@hindcare.example">partners@hindcare.example</a></li>
+            <li>Lucknow &amp; Kanpur demo network</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="footer-bottom">
+        <p class="footer-copy">&copy; <span id="footer-year"></span> HindCare MedTech. Demo prototype — not a live emergency service.</p>
         <label class="role-switcher">
           <span>Team access (not a login)</span>
           <select id="demo-role">
@@ -383,6 +428,55 @@
             <h3>Booking board</h3>
             <div class="list" id="booking-list"></div>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="overlay-backdrop hidden" id="contact-panel-backdrop" data-close="contact-panel">
+      <div class="modal-panel modal-panel-narrow" role="dialog" aria-modal="true" aria-labelledby="contact-panel-title" id="contact-panel">
+        <button type="button" class="panel-close" data-close="contact-panel" aria-label="Close contact">✕</button>
+        <p class="eyebrow">[ CONTACT ]</p>
+        <h2 id="contact-panel-title">Contact us</h2>
+        <p class="section-sub">Questions about bookings, partnerships, or this demo — reach out using the channels below.</p>
+        <ul class="legal-list">
+          <li><strong>Emergency booking line (placeholder):</strong> <a href="tel:+911800000000">+91 1800-000-000</a></li>
+          <li><strong>Patient &amp; booking support:</strong> <a href="mailto:support@hindcare.example">support@hindcare.example</a></li>
+          <li><strong>Hospital &amp; fleet partnerships:</strong> <a href="mailto:partners@hindcare.example">partners@hindcare.example</a></li>
+          <li><strong>Hours (demo):</strong> Mon–Sun, 24×7 for emergency line once live</li>
+        </ul>
+        <p class="tip-disclaimer">For life-threatening emergencies, call your local emergency number immediately.</p>
+      </div>
+    </div>
+
+    <div class="overlay-backdrop hidden" id="terms-panel-backdrop" data-close="terms-panel">
+      <div class="modal-panel modal-panel-narrow" role="dialog" aria-modal="true" aria-labelledby="terms-panel-title" id="terms-panel">
+        <button type="button" class="panel-close" data-close="terms-panel" aria-label="Close terms">✕</button>
+        <p class="eyebrow">[ LEGAL ]</p>
+        <h2 id="terms-panel-title">Terms &amp; conditions</h2>
+        <p class="section-sub">Summary for the HindCare prototype. Replace with counsel-reviewed terms before any public launch.</p>
+        <div class="legal-prose">
+          <p><strong>Service nature.</strong> HindCare is a technology platform intended to help users request ambulance transport and discover hospital partners. The current site uses demo data only and does not dispatch real ambulances.</p>
+          <p><strong>No medical advice.</strong> Content such as emergency tips is general information, not diagnosis or treatment. Always follow instructions from qualified professionals and emergency services.</p>
+          <p><strong>Bookings.</strong> Submitting a booking form or using the assistant does not guarantee availability, response time, or a particular hospital or vehicle. Partners operate under their own licenses and policies.</p>
+          <p><strong>Accounts &amp; partners.</strong> Hospital and fleet registrations may be reviewed before appearing in the network. HindCare may approve, reject, or remove listings that do not meet platform standards.</p>
+          <p><strong>Limitation.</strong> To the extent permitted by law, HindCare MedTech is not liable for delays, unavailability, or outcomes of emergency care in this demo environment.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="overlay-backdrop hidden" id="privacy-panel-backdrop" data-close="privacy-panel">
+      <div class="modal-panel modal-panel-narrow" role="dialog" aria-modal="true" aria-labelledby="privacy-panel-title" id="privacy-panel">
+        <button type="button" class="panel-close" data-close="privacy-panel" aria-label="Close privacy policy">✕</button>
+        <p class="eyebrow">[ LEGAL ]</p>
+        <h2 id="privacy-panel-title">Privacy policy</h2>
+        <p class="section-sub">How we handle information in this prototype. Update before processing real patient data.</p>
+        <div class="legal-prose">
+          <p><strong>What we collect.</strong> Booking and partner forms may include name, phone, location, and email. The assistant chat stores messages in server memory for demo logging.</p>
+          <p><strong>Why we use it.</strong> To match ambulances and hospitals, show booking status, onboard partners, and improve the service. We do not sell personal data.</p>
+          <p><strong>Retention.</strong> Demo data lives in memory and resets when the server restarts. A production deployment will define retention, encryption, and access controls in a database.</p>
+          <p><strong>Sharing.</strong> In a live system, pickup and contact details would be shared only with assigned fleet operators, selected hospitals, and admins who need them for dispatch — not with the general public.</p>
+          <p><strong>Your choices.</strong> You can track a booking with booking ID and phone. Contact support to request correction or deletion once real accounts exist.</p>
+          <p><strong>Security.</strong> Do not submit real sensitive medical records in this demo. A production version will use encrypted storage, access controls, and audit logging.</p>
         </div>
       </div>
     </div>
