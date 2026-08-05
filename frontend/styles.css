@@ -264,7 +264,7 @@ a {
   padding: 24px 20px 22px;
   box-shadow: var(--shadow);
   overflow: hidden;
-  min-height: 200px;
+  min-height: 250px;
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
@@ -278,7 +278,7 @@ a {
   font-size: 12px;
   letter-spacing: 0.06em;
   color: var(--console-muted);
-  margin-bottom: 28px;
+  margin-bottom: 18px;
 }
 
 .scene-dot {
@@ -291,7 +291,7 @@ a {
 
 .scene-stage {
   position: relative;
-  height: 96px;
+  height: 210px;
   overflow: hidden;
 }
 
@@ -299,7 +299,7 @@ a {
   position: absolute;
   left: 0;
   right: 0;
-  bottom: 18px;
+  bottom: 22px;
   height: 3px;
   background: var(--console-line);
 }
@@ -319,8 +319,8 @@ a {
 
 .ambulance {
   position: absolute;
-  bottom: 20px;
-  width: 108px;
+  bottom: 25px;
+  width: 320px;
   animation: amb-drive 4.5s linear infinite;
 }
 
@@ -331,8 +331,8 @@ a {
 }
 
 @keyframes amb-drive {
-  0% { left: -18%; }
-  100% { left: 108%; }
+  0% { left: -28%; }
+  100% { left: 118%; }
 }
 
 .light-a { animation: light-flash 0.6s steps(1) infinite; }
@@ -720,30 +720,49 @@ select:focus {
 .badge.offline { background: var(--muted); }
 
 /* ---- partners ---- */
-.partner-grid {
-  margin-top: 28px;
+.partner-type-picker {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 22px;
+  gap: 6px;
+  margin-top: 22px;
+  max-width: 320px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
 }
 
-.partner-card {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  padding: 26px;
-  box-shadow: var(--shadow);
+.partner-empty-note {
+  margin: 18px 0 0;
+  padding: 16px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 10px;
+  color: var(--muted);
+  font-size: 14px;
+  text-align: center;
 }
 
-.partner-card h3 {
+.partner-empty-note.hidden {
+  display: none;
+}
+
+.partner-screen {
+  margin-top: 22px;
+  padding-top: 22px;
+  border-top: 1px solid var(--line);
+}
+
+.partner-screen.hidden {
+  display: none;
+}
+
+.partner-screen h3 {
   font-size: 19px;
   margin-bottom: 8px;
 }
 
-.partner-card p {
+.partner-screen p {
   color: var(--muted);
   font-size: 14px;
-  margin-bottom: 18px;
+  margin-bottom: 4px;
 }
 
 .partner-form {
@@ -752,8 +771,33 @@ select:focus {
   gap: 12px;
 }
 
-.partner-form.hidden {
-  display: none;
+/* ---- emergency call strip ---- */
+.emergency-strip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px clamp(18px, 5vw, 64px);
+  background: var(--siren);
+  color: #ffffff;
+  text-decoration: none;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.emergency-strip:hover {
+  background: var(--siren-dark);
+}
+
+.emergency-strip-icon {
+  flex: 0 0 auto;
+  display: flex;
+}
+
+.emergency-strip-number {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  text-decoration: underline;
+  white-space: nowrap;
 }
 
 /* ---- floating action buttons ---- */
@@ -1007,9 +1051,11 @@ select:focus {
 
 /* ---- logo mark ---- */
 .brand-mark {
-  width: 40px;
-  height: 40px;
+  width: 42px;
+  height: 42px;
   flex: 0 0 auto;
+  border-radius: 50%;
+  object-fit: cover;
 }
 
 /* ---- status chips ---- */
@@ -1211,8 +1257,7 @@ select:focus {
     padding-top: 40px;
   }
 
-  .network-grid,
-  .partner-grid {
+  .network-grid {
     grid-template-columns: 1fr;
   }
 

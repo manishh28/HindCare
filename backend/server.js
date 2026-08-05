@@ -20,6 +20,7 @@ const AMBULANCE_STATUSES = ["available", "busy", "maintenance", "offline"];
 const HOSPITAL_STATUSES = ["pending", "approved", "rejected"];
 const BOOKING_STATUSES = ["requested", "assigned", "on_route", "completed", "cancelled"];
 const PHONE_PATTERN = /^\+?[0-9][0-9\s-]{6,17}$/;
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // Booking status can only move forward (or be cancelled) — this is what
 // keeps a booking from being marked "completed" before an ambulance is even
@@ -52,6 +53,7 @@ const db = {
       city: "Lucknow",
       address: "SGPGI Road, Lucknow",
       phone: "+91-9000000001",
+      email: "contact@hindcare-hospital.example",
       emergencyAvailable: true,
       totalBeds: 120,
       availableBeds: 28,
@@ -63,6 +65,7 @@ const db = {
       city: "Lucknow",
       address: "Gomti Nagar, Lucknow",
       phone: "+91-9000000002",
+      email: "contact@medtechcity.example",
       emergencyAvailable: true,
       totalBeds: 80,
       availableBeds: 12,
@@ -76,6 +79,7 @@ const db = {
       type: "advanced",
       driverName: "Rahul Singh",
       phone: "+91-9111111111",
+      email: "rahul.singh@fleet.example",
       currentLat: 26.8467,
       currentLng: 80.9462,
       status: "available"
@@ -86,6 +90,7 @@ const db = {
       type: "basic",
       driverName: "Amit Verma",
       phone: "+91-9222222222",
+      email: "amit.verma@fleet.example",
       currentLat: 26.8500,
       currentLng: 80.9500,
       status: "busy"
@@ -360,13 +365,17 @@ async function handleApi(req, res) {
 
   if (req.method === "POST" && url.pathname === "/api/hospitals") {
     const body = await parseBody(req);
-    const missing = requireFields(body, ["name", "city", "address", "phone"]);
+    const missing = requireFields(body, ["name", "city", "address", "phone", "email"]);
     if (missing.length) {
       sendJson(req, res, 400, { error: "Missing required fields", fields: missing });
       return;
     }
     if (!PHONE_PATTERN.test(String(body.phone).trim())) {
       sendJson(req, res, 400, { error: "phone must be a valid phone number" });
+      return;
+    }
+    if (!EMAIL_PATTERN.test(String(body.email).trim())) {
+      sendJson(req, res, 400, { error: "email must be a valid email address" });
       return;
     }
 
@@ -376,6 +385,7 @@ async function handleApi(req, res) {
       city: String(body.city).trim(),
       address: String(body.address).trim(),
       phone: String(body.phone).trim(),
+      email: String(body.email).trim().toLowerCase(),
       emergencyAvailable: Boolean(body.emergencyAvailable ?? true),
       totalBeds: Number(body.totalBeds || 0),
       availableBeds: Number(body.availableBeds || 0),
@@ -413,14 +423,14 @@ async function handleApi(req, res) {
     const canSeeDriverInfo = hasDemoRole(req, ["fleet", "admin"]);
     const ambulances = canSeeDriverInfo
       ? db.ambulances
-      : db.ambulances.map(({ driverName, phone, ...rest }) => rest);
+      : db.ambulances.map(({ driverName, phone, email, ...rest }) => rest);
     sendJson(req, res, 200, ambulances);
     return;
   }
 
   if (req.method === "POST" && url.pathname === "/api/ambulances") {
     const body = await parseBody(req);
-    const missing = requireFields(body, ["registrationNumber", "type", "driverName", "phone"]);
+    const missing = requireFields(body, ["registrationNumber", "type", "driverName", "phone", "email"]);
     if (missing.length) {
       sendJson(req, res, 400, { error: "Missing required fields", fields: missing });
       return;
@@ -433,6 +443,10 @@ async function handleApi(req, res) {
       sendJson(req, res, 400, { error: "phone must be a valid phone number" });
       return;
     }
+    if (!EMAIL_PATTERN.test(String(body.email).trim())) {
+      sendJson(req, res, 400, { error: "email must be a valid email address" });
+      return;
+    }
 
     const ambulance = {
       id: nextId(db.ambulances),
@@ -440,6 +454,7 @@ async function handleApi(req, res) {
       type: body.type,
       driverName: String(body.driverName).trim(),
       phone: String(body.phone).trim(),
+      email: String(body.email).trim().toLowerCase(),
       currentLat: body.currentLat !== undefined ? Number(body.currentLat) : null,
       currentLng: body.currentLng !== undefined ? Number(body.currentLng) : null,
       status: "available"

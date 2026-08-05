@@ -20,11 +20,28 @@
       </a>
       <nav class="topbar-nav">
         <a href="#quick-book">Book ambulance</a>
-        <a href="#network">Network</a>
+        <button type="button" data-open="network-panel">Network</button>
         <button type="button" data-open="partner-panel">Partner with us</button>
         <button type="button" data-open="chat-panel">Assistant</button>
       </nav>
     </header>
+
+    <!--
+      NOTE: +91-1800-000-000 is a placeholder — it does not connect to
+      anyone. Replace it with a real, staffed number before this is used
+      outside of local testing.
+    -->
+    <a class="emergency-strip" href="tel:+911800000000">
+      <span class="emergency-strip-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="20" height="20">
+          <path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.6 21 3 13.4 3 4c0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.4 0 .8-.2 1L6.6 10.8z" fill="currentColor" />
+        </svg>
+      </span>
+      <span class="emergency-strip-text">
+        <strong>Can't fill out a form right now?</strong>
+        Call our emergency line directly — <span class="emergency-strip-number">+91 1800-000-000</span>
+      </span>
+    </a>
 
     <main id="top">
       <!-- ============ HERO ============ -->
@@ -74,84 +91,73 @@
                 <defs>
                   <linearGradient id="bodyShade" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stop-color="#ffffff" />
-                    <stop offset="100%" stop-color="#dbe1e8" />
+                    <stop offset="100%" stop-color="#d7dde5" />
                   </linearGradient>
                   <linearGradient id="cabShade" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stop-color="#ffffff" />
-                    <stop offset="100%" stop-color="#d4dae2" />
+                    <stop offset="100%" stop-color="#cfd6e0" />
                   </linearGradient>
-                  <radialGradient id="tireShade" cx="35%" cy="32%" r="70%">
-                    <stop offset="0%" stop-color="#3d4757" />
-                    <stop offset="100%" stop-color="#11141b" />
+                  <radialGradient id="tireShade" cx="35%" cy="30%" r="72%">
+                    <stop offset="0%" stop-color="#6b7688" />
+                    <stop offset="100%" stop-color="#20242c" />
                   </radialGradient>
                 </defs>
 
-                <ellipse cx="95" cy="78" rx="62" ry="4" fill="rgba(0,0,0,0.28)" />
+                <ellipse cx="95" cy="81" rx="66" ry="5" fill="rgba(0,0,0,0.3)" />
 
-                <line class="speed-line" x1="0" y1="34" x2="14" y2="34" stroke="#e6ecf5" stroke-width="3" stroke-linecap="round" style="animation-delay:0s" />
-                <line class="speed-line" x1="2" y1="44" x2="17" y2="44" stroke="#e6ecf5" stroke-width="3" stroke-linecap="round" style="animation-delay:.15s" />
-                <line class="speed-line" x1="0" y1="54" x2="12" y2="54" stroke="#e6ecf5" stroke-width="3" stroke-linecap="round" style="animation-delay:.3s" />
+                <line class="speed-line" x1="0" y1="34" x2="16" y2="34" stroke="#e6ecf5" stroke-width="3.5" stroke-linecap="round" style="animation-delay:0s" />
+                <line class="speed-line" x1="2" y1="46" x2="19" y2="46" stroke="#e6ecf5" stroke-width="3.5" stroke-linecap="round" style="animation-delay:.15s" />
+                <line class="speed-line" x1="0" y1="58" x2="14" y2="58" stroke="#e6ecf5" stroke-width="3.5" stroke-linecap="round" style="animation-delay:.3s" />
 
                 <g class="amb-suspension">
                   <!-- patient compartment -->
-                  <rect x="18" y="14" width="104" height="50" rx="6" fill="url(#bodyShade)" stroke="#aab3bd" stroke-width="1" />
-                  <line x1="23" y1="16" x2="23" y2="62" stroke="#aab3bd" />
-                  <circle cx="26" cy="40" r="1.3" fill="#6b7482" />
-                  <rect x="99" y="20" width="15" height="13" rx="2" fill="#a9d4ff" />
-                  <rect x="99" y="20" width="15" height="5" fill="#ffffff" opacity="0.4" />
+                  <rect x="14" y="10" width="110" height="56" rx="7" fill="url(#bodyShade)" stroke="#98a2ae" stroke-width="1.2" />
+                  <line x1="20" y1="12" x2="20" y2="66" stroke="#98a2ae" stroke-width="1.2" />
+                  <circle cx="23" cy="39" r="1.6" fill="#5b6472" />
+                  <rect x="100" y="16" width="17" height="15" rx="2" fill="#a9d4ff" />
+                  <rect x="100" y="16" width="17" height="5.5" fill="#ffffff" opacity="0.4" />
 
                   <!-- side stripe -->
-                  <rect x="18" y="45" width="104" height="9" fill="#1d4ed8" />
-                  <rect x="18" y="45" width="104" height="2" fill="#0f2f9e" opacity="0.5" />
+                  <rect x="14" y="46" width="110" height="11" fill="#1d4ed8" />
+                  <rect x="14" y="46" width="110" height="2.5" fill="#0f2f9e" opacity="0.55" />
 
                   <!-- red cross emblem -->
-                  <rect x="50" y="26" width="18" height="7" rx="1" fill="var(--siren)" />
-                  <rect x="55.5" y="20.5" width="7" height="18" rx="1" fill="var(--siren)" />
-
-                  <!-- side lettering -->
-                  <text x="71" y="60" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="5.2" letter-spacing="0.5" fill="#6b7482">AMBULANCE</text>
+                  <rect x="49" y="24" width="22" height="9" rx="1.5" fill="var(--siren)" />
+                  <rect x="56" y="17" width="9" height="23" rx="1.5" fill="var(--siren)" />
 
                   <!-- light bar -->
-                  <rect x="29" y="7" width="82" height="7" rx="3.5" fill="#1f2937" />
-                  <rect class="light-a" x="33" y="8.3" width="16" height="4.4" rx="2" fill="#e11d2e" />
-                  <rect class="light-b" x="53" y="8.3" width="16" height="4.4" rx="2" fill="#1d4ed8" />
-                  <rect class="light-b" x="73" y="8.3" width="16" height="4.4" rx="2" fill="#e11d2e" />
-                  <rect class="light-a" x="93" y="8.3" width="16" height="4.4" rx="2" fill="#1d4ed8" />
+                  <rect x="24" y="3" width="88" height="9" rx="4.5" fill="#1f2937" />
+                  <rect class="light-a" x="29" y="4.6" width="18" height="5.8" rx="2.8" fill="#e11d2e" />
+                  <rect class="light-b" x="51" y="4.6" width="18" height="5.8" rx="2.8" fill="#1d4ed8" />
+                  <rect class="light-b" x="73" y="4.6" width="18" height="5.8" rx="2.8" fill="#e11d2e" />
+                  <rect class="light-a" x="95" y="4.6" width="18" height="5.8" rx="2.8" fill="#1d4ed8" />
 
                   <!-- cab -->
-                  <path d="M122,64 L122,23 Q122,17 128,17 L147,17 L163,39 L163,64 Z" fill="url(#cabShade)" stroke="#aab3bd" stroke-width="1" />
-                  <path d="M128,21 L145,21 L157,39 L128,39 Z" fill="#bcd9ff" />
-                  <path d="M130,23 L138,23 L133,33 L128,33 Z" fill="#ffffff" opacity="0.4" />
-                  <rect x="119" y="25" width="4" height="7" rx="1.5" fill="#374151" />
+                  <path d="M124,66 L124,19 Q124,12 131,12 L152,12 L170,41 L170,66 Z" fill="url(#cabShade)" stroke="#98a2ae" stroke-width="1.2" />
+                  <path d="M131,17 L150,17 L163,41 L131,41 Z" fill="#bcd9ff" />
+                  <path d="M133,19 L142,19 L136,30 L131,30 Z" fill="#ffffff" opacity="0.45" />
+                  <rect x="121" y="21" width="4.5" height="8" rx="1.8" fill="#374151" />
 
                   <!-- front end -->
-                  <rect x="157" y="42" width="6" height="4" rx="1" fill="#4b5563" />
-                  <rect x="158" y="55" width="9" height="9" rx="2" fill="#374151" />
-                  <ellipse cx="161.5" cy="47" rx="3.4" ry="2.6" fill="#ffe38a" />
+                  <rect x="164" y="45" width="7" height="4.5" rx="1" fill="#4b5563" />
+                  <rect x="165" y="59" width="10" height="10" rx="2.2" fill="#374151" />
+                  <ellipse cx="169.5" cy="50" rx="4" ry="3.1" fill="#ffe38a" />
 
-                  <!-- wheels -->
-                  <g class="wheel-spin" style="transform-origin: 47px 70px">
-                    <circle cx="47" cy="70" r="14" fill="url(#tireShade)" />
-                    <circle cx="47" cy="70" r="7.4" fill="#e5e9ee" />
-                    <circle cx="47" cy="70" r="2.3" fill="#8b95a1" />
-                    <line x1="47" y1="63" x2="47" y2="77" stroke="#aab3bd" stroke-width="1.3" />
-                    <line x1="40" y1="70" x2="54" y2="70" stroke="#aab3bd" stroke-width="1.3" />
-                    <line x1="42" y1="65" x2="52" y2="75" stroke="#aab3bd" stroke-width="1" />
-                    <line x1="52" y1="65" x2="42" y2="75" stroke="#aab3bd" stroke-width="1" />
+                  <!-- wheels — tucked up into the body so they read as attached, not floating -->
+                  <g class="wheel-spin">
+                    <circle cx="46" cy="68" r="17" fill="url(#tireShade)" stroke="#8b95a8" stroke-width="1.2" />
+                    <circle cx="46" cy="68" r="9" fill="#e5e9ee" />
+                    <circle cx="46" cy="68" r="2.8" fill="#8b95a1" />
+                    <line x1="46" y1="59" x2="46" y2="77" stroke="#98a2ae" stroke-width="1.6" />
+                    <line x1="37" y1="68" x2="55" y2="68" stroke="#98a2ae" stroke-width="1.6" />
                   </g>
-                  <g class="wheel-spin" style="transform-origin: 141px 70px">
-                    <circle cx="141" cy="70" r="14" fill="url(#tireShade)" />
-                    <circle cx="141" cy="70" r="7.4" fill="#e5e9ee" />
-                    <circle cx="141" cy="70" r="2.3" fill="#8b95a1" />
-                    <line x1="141" y1="63" x2="141" y2="77" stroke="#aab3bd" stroke-width="1.3" />
-                    <line x1="134" y1="70" x2="148" y2="70" stroke="#aab3bd" stroke-width="1.3" />
-                    <line x1="136" y1="65" x2="146" y2="75" stroke="#aab3bd" stroke-width="1" />
-                    <line x1="146" y1="65" x2="136" y2="75" stroke="#aab3bd" stroke-width="1" />
+                  <g class="wheel-spin">
+                    <circle cx="148" cy="68" r="17" fill="url(#tireShade)" stroke="#8b95a8" stroke-width="1.2" />
+                    <circle cx="148" cy="68" r="9" fill="#e5e9ee" />
+                    <circle cx="148" cy="68" r="2.8" fill="#8b95a1" />
+                    <line x1="148" y1="59" x2="148" y2="77" stroke="#98a2ae" stroke-width="1.6" />
+                    <line x1="139" y1="68" x2="157" y2="68" stroke="#98a2ae" stroke-width="1.6" />
                   </g>
-
-                  <!-- fenders (sit above wheels, over the body edge) -->
-                  <path d="M33,64 a14,15 0 0 1 28,0" fill="none" stroke="#aab3bd" stroke-width="1" />
-                  <path d="M127,64 a14,15 0 0 1 28,0" fill="none" stroke="#aab3bd" stroke-width="1" />
                 </g>
               </svg>
             </div>
@@ -263,32 +269,6 @@
         </svg>
       </div>
 
-      <!-- ============ NETWORK ============ -->
-      <section class="panel-shell" id="network">
-        <p class="eyebrow">[ FLEET REGISTRY ]</p>
-        <h2>Live network status</h2>
-        <div class="network-grid">
-          <div class="network-col">
-            <h3>Hospitals</h3>
-            <div class="list" id="hospital-list"></div>
-          </div>
-          <div class="network-col">
-            <h3>Ambulances</h3>
-            <div class="list" id="ambulance-list"></div>
-          </div>
-          <div class="network-col">
-            <h3>Booking board</h3>
-            <div class="list" id="booking-list"></div>
-          </div>
-        </div>
-      </section>
-
-      <div class="pulse-divider" aria-hidden="true">
-        <svg viewBox="0 0 1200 40" preserveAspectRatio="none">
-          <path class="pulse-line" d="M0,20 L370,20 L384,14 L396,20 L420,20 L428,26 L438,2 L448,36 L460,20 L480,20 L490,12 L500,20 L1200,20" />
-        </svg>
-      </div>
-
       <!-- ============ EMERGENCY TIPS ============ -->
       <section class="panel-shell" id="tips">
         <p class="eyebrow">[ WHILE YOU WAIT ]</p>
@@ -385,70 +365,107 @@
     </div>
 
     <!-- ============ PARTNER SIGN-UP (modal) ============ -->
+    <div class="overlay-backdrop hidden" id="network-panel-backdrop" data-close="network-panel">
+      <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="network-panel-title" id="network-panel">
+        <button type="button" class="panel-close" data-close="network-panel" aria-label="Close network status">✕</button>
+        <p class="eyebrow">[ FLEET REGISTRY ]</p>
+        <h2 id="network-panel-title">Live network status</h2>
+        <div class="network-grid">
+          <div class="network-col">
+            <h3>Hospitals</h3>
+            <div class="list" id="hospital-list"></div>
+          </div>
+          <div class="network-col">
+            <h3>Ambulances</h3>
+            <div class="list" id="ambulance-list"></div>
+          </div>
+          <div class="network-col">
+            <h3>Booking board</h3>
+            <div class="list" id="booking-list"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="overlay-backdrop hidden" id="partner-panel-backdrop" data-close="partner-panel">
       <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="partner-panel-title" id="partner-panel">
         <button type="button" class="panel-close" data-close="partner-panel" aria-label="Close partner sign-up">✕</button>
         <p class="eyebrow">[ PARTNER NETWORK ]</p>
         <h2 id="partner-panel-title">Join HindCare</h2>
-        <p class="section-sub">Hospitals extend their emergency reach. Ambulance operators fill idle hours. Both plug straight into live dispatch.</p>
+        <p class="section-sub">Hospitals and ambulance operators go through different onboarding — tell us which one you are.</p>
 
-        <div class="partner-grid">
-          <article class="partner-card">
-            <h3>List your hospital</h3>
-            <p>Get matched with patients who need your beds, and show real-time availability to the network.</p>
-            <button type="button" class="cta-secondary" data-toggle-form="hospital-partner-form">Register hospital</button>
-            <form id="hospital-partner-form" class="partner-form hidden">
-              <label>
-                Hospital name
-                <input name="name" placeholder="CarePlus Trauma Center" required>
-              </label>
-              <label>
-                City
-                <input name="city" placeholder="Lucknow" required>
-              </label>
-              <label>
-                Address
-                <input name="address" placeholder="Mall Road, Kanpur" required>
-              </label>
-              <label>
-                Phone
-                <input name="phone" placeholder="+91-9000000000" required>
-              </label>
-              <button type="submit" class="cta-primary cta-block">Submit for review</button>
-              <p class="form-result" id="hospital-partner-result" role="status"></p>
-            </form>
-          </article>
+        <label class="partner-type-picker">
+          I am a
+          <select id="partner-type-select">
+            <option value="">Choose one…</option>
+            <option value="hospital">Hospital</option>
+            <option value="ambulance">Ambulance / fleet operator</option>
+          </select>
+        </label>
 
-          <article class="partner-card">
-            <h3>Register your ambulance or fleet</h3>
-            <p>Pick up dispatch requests in your coverage area and track every trip from one place.</p>
-            <button type="button" class="cta-secondary" data-toggle-form="fleet-partner-form">Register ambulance</button>
-            <form id="fleet-partner-form" class="partner-form hidden">
-              <label>
-                Registration number
-                <input name="registrationNumber" placeholder="UP32 AB 1010" required>
-              </label>
-              <label>
-                Ambulance type
-                <select name="type" required>
-                  <option value="basic">Basic</option>
-                  <option value="advanced">Advanced</option>
-                  <option value="icu">ICU</option>
-                  <option value="neonatal">Neonatal</option>
-                </select>
-              </label>
-              <label>
-                Driver name
-                <input name="driverName" placeholder="Rahul Singh" required>
-              </label>
-              <label>
-                Phone
-                <input name="phone" placeholder="+91-9000000000" required>
-              </label>
-              <button type="submit" class="cta-primary cta-block">Submit for review</button>
-              <p class="form-result" id="fleet-partner-result" role="status"></p>
-            </form>
-          </article>
+        <p class="partner-empty-note" id="partner-empty-note">Select an option above to continue.</p>
+
+        <div class="partner-screen hidden" id="hospital-partner-screen">
+          <h3>List your hospital</h3>
+          <p>Get matched with patients who need your beds, and show real-time availability to the network.</p>
+          <form id="hospital-partner-form" class="partner-form">
+            <label>
+              Hospital name
+              <input name="name" placeholder="CarePlus Trauma Center" required>
+            </label>
+            <label>
+              City
+              <input name="city" placeholder="Lucknow" required>
+            </label>
+            <label>
+              Address
+              <input name="address" placeholder="Mall Road, Kanpur" required>
+            </label>
+            <label>
+              Phone
+              <input name="phone" placeholder="+91-9000000000" required>
+            </label>
+            <label>
+              Email
+              <input type="email" name="email" placeholder="contact@hospital.com" required>
+            </label>
+            <button type="submit" class="cta-primary cta-block">Submit for review</button>
+            <p class="form-result" id="hospital-partner-result" role="status"></p>
+          </form>
+        </div>
+
+        <div class="partner-screen hidden" id="ambulance-partner-screen">
+          <h3>Register your ambulance or fleet</h3>
+          <p>Pick up dispatch requests in your coverage area and track every trip from one place.</p>
+          <form id="fleet-partner-form" class="partner-form">
+            <label>
+              Registration number
+              <input name="registrationNumber" placeholder="UP32 AB 1010" required>
+            </label>
+            <label>
+              Ambulance type
+              <select name="type" required>
+                <option value="basic">Basic</option>
+                <option value="advanced">Advanced</option>
+                <option value="icu">ICU</option>
+                <option value="neonatal">Neonatal</option>
+              </select>
+            </label>
+            <label>
+              Driver name
+              <input name="driverName" placeholder="Rahul Singh" required>
+            </label>
+            <label>
+              Phone
+              <input name="phone" placeholder="+91-9000000000" required>
+            </label>
+            <label>
+              Email
+              <input type="email" name="email" placeholder="you@fleetcompany.com" required>
+            </label>
+            <button type="submit" class="cta-primary cta-block">Submit for review</button>
+            <p class="form-result" id="fleet-partner-result" role="status"></p>
+          </form>
         </div>
       </div>
     </div>
