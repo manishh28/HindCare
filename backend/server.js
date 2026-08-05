@@ -116,15 +116,51 @@ function corsHeaders(req) {
   return {};
 }
 
-function sendJson(req, res, statusCode, payload) {
+// Helper to send JSON responses (add at top of createServer or outside)
+function sendJson(req, res, statusCode, data) {
+  const body = JSON.stringify(data);
   res.writeHead(statusCode, {
-    "Content-Type": "application/json",
-    ...corsHeaders(req),
-    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Demo-Role",
-    "Access-Control-Allow-Methods": "GET,POST,PATCH,DELETE,OPTIONS"
+    'Content-Type': 'application/json',
+    'Content-Length': Buffer.byteLength(body),
+    // Optional CORS headers if needed (same-origin doesn't need them, but safe to add)
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization'
   });
-  res.end(JSON.stringify(payload, null, 2));
+  res.end(body);
 }
+
+// Inside createServer callback:
+const server = http.createServer(async (req, res) => {
+  // Parse URL (full pathname)
+  const parsedUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+
+  // Handle CORS preflight if needed
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204, {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+    });
+    res.end();
+    return;
+  }
+
+  // ---- AUTH ROUTES ----
+  if (parsedUrl.pathname.startsWith('/api/auth')) {
+    // Parse JSON body for POST/PUT
+    if (req.method === 'POST' || req.method === 'PUT') {
+      await parseBody(req);
+    }
+
+    // Call the auth handler with all required arguments
+    const handled = await handleAuthRoutes(req, res, parsedUrl, parseBody, sendJson);
+    if (handled) return;  // stop if the route was handled
+    // If not handled, fall through to 404 or other routes
+  }
+
+  // ... rest of your static file serving / catch-all ...
+});
 
 function parseBody(req) {
   return new Promise((resolve, reject) => {
