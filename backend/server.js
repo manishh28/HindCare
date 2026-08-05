@@ -2,6 +2,8 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const { handleMessage, emptySession } = require("../chatbot/chatbot");
+const { handleAuthRoutes } = require("./auth/routes");
+const { handleProfileRoutes } = require("./profile/routes");
 
 const PORT = Number(process.env.PORT || 4173);
 const HOST = process.env.HOST || "127.0.0.1";
@@ -118,8 +120,8 @@ function sendJson(req, res, statusCode, payload) {
   res.writeHead(statusCode, {
     "Content-Type": "application/json",
     ...corsHeaders(req),
-    "Access-Control-Allow-Headers": "Content-Type, X-Demo-Role",
-    "Access-Control-Allow-Methods": "GET,POST,PATCH,OPTIONS"
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Demo-Role",
+    "Access-Control-Allow-Methods": "GET,POST,PATCH,DELETE,OPTIONS"
   });
   res.end(JSON.stringify(payload, null, 2));
 }
@@ -326,7 +328,9 @@ function serveStatic(req, res) {
       ".css": "text/css; charset=utf-8",
       ".js": "text/javascript; charset=utf-8",
       ".json": "application/json; charset=utf-8",
-      ".png": "image/png"
+      ".png": "image/png",
+      ".svg": "image/svg+xml",
+      ".woff2": "font/woff2"
     };
 
     res.writeHead(200, { "Content-Type": types[ext] || "application/octet-stream" });
@@ -348,9 +352,13 @@ async function handleApi(req, res) {
   }
 
   if (req.method === "GET" && url.pathname === "/api/health") {
-    sendJson(req, res, 200, { status: "ok", service: "hindcare-aggregator" });
+    sendJson(req, res, 200, { status: "ok", service: "hindcare-aggregator", auth: "enabled" });
     return;
   }
+
+  // ---- Authentication & Profile (production auth module) ----
+  if (await handleAuthRoutes(req, res, url, parseBody, sendJson)) return;
+  if (await handleProfileRoutes(req, res, url, parseBody, sendJson)) return;
 
   // ---- Hospitals ----------------------------------------------------
 
