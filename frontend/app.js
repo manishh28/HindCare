@@ -359,7 +359,10 @@ async function refreshDashboard() {
 // panel toggles itself directly.
 const PANEL_TARGETS = {
   "partner-panel": "partner-panel-backdrop",
-  "network-panel": "network-panel-backdrop"
+  "network-panel": "network-panel-backdrop",
+  "contact-panel": "contact-panel-backdrop",
+  "terms-panel": "terms-panel-backdrop",
+  "privacy-panel": "privacy-panel-backdrop"
 };
 
 function panelElement(key) {
@@ -398,6 +401,9 @@ document.addEventListener("keydown", event => {
     closePanel("chat-panel");
     closePanel("partner-panel");
     closePanel("network-panel");
+    closePanel("contact-panel");
+    closePanel("terms-panel");
+    closePanel("privacy-panel");
   }
 });
 
@@ -583,3 +589,8 @@ document.getElementById("tracker-form").addEventListener("submit", async event =
 refreshDashboard().catch(error => {
   document.body.insertAdjacentHTML("afterbegin", `<p class="load-error">${error.message}</p>`);
 });
+
+const footerYear = document.getElementById("footer-year");
+if (footerYear) {
+  footerYear.textContent = String(new Date().getFullYear());
+}
