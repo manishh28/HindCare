@@ -117,26 +117,6 @@ CREATE TABLE login_history (
 -- PROFILE TABLES (ROLE-SPECIFIC EXTENSIONS)
 -- ============================================================
 
-CREATE TABLE customer_profiles (
-  user_id BIGINT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-  full_name VARCHAR(120) NOT NULL,
-  gender VARCHAR(20) CHECK (gender IN ('male', 'female', 'other', 'prefer_not_to_say')),
-  date_of_birth DATE,
-  blood_group VARCHAR(5),
-  height_cm DECIMAL(5, 2),
-  weight_kg DECIMAL(5, 2),
-  profile_photo_url TEXT,
-  language_preference VARCHAR(10) NOT NULL DEFAULT 'en',
-  notification_email BOOLEAN NOT NULL DEFAULT TRUE,
-  notification_sms BOOLEAN NOT NULL DEFAULT TRUE,
-  notification_push BOOLEAN NOT NULL DEFAULT TRUE,
-  privacy_share_location BOOLEAN NOT NULL DEFAULT TRUE,
-  privacy_share_medical BOOLEAN NOT NULL DEFAULT FALSE,
-  wallet_balance DECIMAL(12, 2) NOT NULL DEFAULT 0,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
 CREATE TABLE driver_profiles (
   user_id BIGINT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
   full_name VARCHAR(120) NOT NULL,
@@ -230,57 +210,6 @@ CREATE TABLE emergency_contacts (
   created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE medical_information (
-  id BIGSERIAL PRIMARY KEY,
-  user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  condition_name VARCHAR(160) NOT NULL,
-  severity VARCHAR(20) CHECK (severity IN ('mild', 'moderate', 'severe')),
-  notes TEXT,
-  diagnosed_at DATE,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE allergies (
-  id BIGSERIAL PRIMARY KEY,
-  user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  allergen VARCHAR(120) NOT NULL,
-  reaction TEXT,
-  severity VARCHAR(20) CHECK (severity IN ('mild', 'moderate', 'severe', 'life_threatening')),
-  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE insurance_details (
-  id BIGSERIAL PRIMARY KEY,
-  user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  provider_name VARCHAR(120) NOT NULL,
-  policy_number VARCHAR(80) NOT NULL,
-  valid_until DATE,
-  coverage_amount DECIMAL(14, 2),
-  is_primary BOOLEAN NOT NULL DEFAULT TRUE,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE saved_locations (
-  id BIGSERIAL PRIMARY KEY,
-  user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  label VARCHAR(60) NOT NULL,
-  address TEXT NOT NULL,
-  lat DECIMAL(10, 7),
-  lng DECIMAL(10, 7),
-  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE payment_methods (
-  id BIGSERIAL PRIMARY KEY,
-  user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  type VARCHAR(20) NOT NULL CHECK (type IN ('card', 'upi', 'wallet', 'netbanking')),
-  label VARCHAR(80) NOT NULL,
-  last_four VARCHAR(4),
-  upi_id VARCHAR(80),
-  is_default BOOLEAN NOT NULL DEFAULT FALSE,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
 CREATE TABLE user_documents (
   id BIGSERIAL PRIMARY KEY,
   user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -292,13 +221,6 @@ CREATE TABLE user_documents (
   verified BOOLEAN NOT NULL DEFAULT FALSE,
   expires_at DATE,
   uploaded_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE favourite_hospitals (
-  user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  hospital_id BIGINT NOT NULL REFERENCES hospitals(id) ON DELETE CASCADE,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (user_id, hospital_id)
 );
 
 CREATE TABLE driver_bank_details (
@@ -357,7 +279,6 @@ CREATE INDEX idx_user_documents_user ON user_documents(user_id);
 -- ============================================================
 
 INSERT INTO roles (slug, name, description, mfa_required) VALUES
-  ('customer', 'Customer / Patient', 'Books ambulances and manages personal health profile', FALSE),
   ('driver', 'Ambulance Driver', 'Operates assigned ambulance and updates trip status', FALSE),
   ('dispatcher', 'Dispatcher / Call Center', 'Handles emergency calls and dispatches ambulances', FALSE),
   ('hospital_admin', 'Hospital Admin', 'Manages hospital operations and staff', TRUE),
