@@ -231,9 +231,8 @@ function serveStatic(req, res) {
     }
   }
 
-  // Only /auth is a true sub-app with its own index.html.
-  // /profile has no dedicated index.html and must keep falling back to the main SPA shell.
-  const isSubApp = /^auth(\/|$)/.test(relativePath);
+  // /auth and /profile are true sub-apps with their own index.html.
+  const isSubApp = /^(auth|profile)(\/|$)/.test(relativePath);
 
   function tryCandidate(index) {
     if (index >= candidates.length) {
