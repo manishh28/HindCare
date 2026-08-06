@@ -22,9 +22,7 @@ const {
   getProfile,
   hashPassword,
   verifyPassword,
-  store,
-  nextUserId,
-  attachProfile: _attachProfile
+  store
 } = require("./store");
 
 const {
@@ -58,33 +56,6 @@ function checkRateLimit(key) {
   return entry.count <= RATE_LIMIT_MAX;
 }
 
-function attachProfile(user, profile) {
-  const base = { userId: user.id, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
-  switch (user.roleSlug) {
-    case "customer":
-      store.customerProfiles.push({
-        ...base, profilePhotoUrl: null, languagePreference: "en",
-        notificationEmail: true, notificationSms: true, notificationPush: true,
-        privacyShareLocation: true, privacyShareMedical: false, walletBalance: 0,
-        fullName: profile.fullName, gender: profile.gender || null,
-        dateOfBirth: profile.dateOfBirth || null, bloodGroup: profile.bloodGroup || null,
-        heightCm: profile.heightCm || null, weightKg: profile.weightKg || null
-      });
-      break;
-    default:
-      break;
-  }
-  store.notificationPrefs.push({
-    userId: user.id,
-    bookingUpdates: true,
-    promotions: user.roleSlug === "customer",
-    securityAlerts: true,
-    shiftReminders: user.roleSlug !== "customer",
-    systemMaintenance: true,
-    updatedAt: new Date().toISOString()
-  });
-}
-
 async function handleAuthRoutes(req, res, url, parseBody, sendJson) {
   const meta = getRequestMeta(req);
   const ipKey = meta.ip || "unknown";
@@ -99,97 +70,6 @@ async function handleAuthRoutes(req, res, url, parseBody, sendJson) {
     return true;
   }
 
-  // ---- Customer Sign Up ----
-  if (req.method === "POST" && url.pathname === "/api/auth/signup") {
-    if (!checkRateLimit(`signup:${ipKey}`)) {
-      sendJson(req, res, 429, { error: "Too many requests. Please try again later.", code: "RATE_LIMITED" });
-      return true;
-    }
-
-    const body = await parseBody(req);
-    const missing = ["fullName", "email", "phone", "password"].filter(f => !String(body[f] || "").trim());
-    if (missing.length) {
-      sendJson(req, res, 400, { error: "Missing required fields", fields: missing });
-      return true;
-    }
-
-    if (!validateEmail(body.email)) {
-      sendJson(req, res, 400, { error: "Invalid email address", code: "INVALID_EMAIL" });
-      return true;
-    }
-    if (!validatePhone(body.phone)) {
-      sendJson(req, res, 400, { error: "Invalid phone number", code: "INVALID_PHONE" });
-      return true;
-    }
-
-    const pwdCheck = validatePassword(body.password);
-    if (!pwdCheck.ok) {
-      sendJson(req, res, 400, { error: pwdCheck.error, code: "WEAK_PASSWORD", strength: pwdCheck.strength });
-      return true;
-    }
-
-    if (body.captchaToken !== "demo-captcha-valid" && process.env.REQUIRE_CAPTCHA === "true") {
-      sendJson(req, res, 400, { error: "CAPTCHA verification failed", code: "CAPTCHA_FAILED" });
-      return true;
-    }
-
-    const email = body.email.trim().toLowerCase();
-    const phone = normalizePhone(body.phone);
-    if (findUserByEmail(email)) {
-      sendJson(req, res, 409, { error: "Email already registered", code: "EMAIL_EXISTS" });
-      return true;
-    }
-    if (findUserByPhone(phone)) {
-      sendJson(req, res, 409, { error: "Phone number already registered", code: "PHONE_EXISTS" });
-      return true;
-    }
-
-    const role = getRoleBySlug("customer");
-    const user = {
-      id: nextUserId(),
-      roleId: role.id,
-      roleSlug: role.slug,
-      employeeId: null,
-      email,
-      phone,
-      passwordHash: await hashPassword(body.password),
-      emailVerified: false,
-      phoneVerified: false,
-      mfaEnabled: false,
-      mfaSecret: null,
-      status: "pending",
-      failedLoginAttempts: 0,
-      lockedUntil: null,
-      lastLoginAt: null,
-      passwordChangedAt: new Date().toISOString(),
-      googleId: null,
-      preferredLanguage: body.language || "en",
-      theme: "light",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      deletedAt: null
-    };
-    store.users.push(user);
-    attachProfile(user, { fullName: body.fullName.trim(), gender: body.gender });
-
-    const emailOtp = createOtp({ userId: user.id, channel: "email", destination: email, purpose: "verify_email" });
-    const phoneOtp = createOtp({ userId: user.id, channel: "phone", destination: phone, purpose: "verify_phone" });
-
-    auditAction(req, user.id, "user.signup", "user", user.id);
-
-    sendJson(req, res, 201, {
-      message: "Account created. Please verify your email and phone.",
-      userId: user.id,
-      requiresVerification: true,
-      demoOtps: {
-        email: emailOtp._plainOtp,
-        phone: phoneOtp._plainOtp,
-        note: "Demo only — OTPs are returned in response for local testing"
-      }
-    });
-    return true;
-  }
-
   // ---- Login (role-aware) ----
   if (req.method === "POST" && url.pathname === "/api/auth/login") {
     if (!checkRateLimit(`login:${ipKey}`)) {
@@ -198,7 +78,7 @@ async function handleAuthRoutes(req, res, url, parseBody, sendJson) {
     }
 
     const body = await parseBody(req);
-    const roleSlug = String(body.role || "customer").toLowerCase();
+    const roleSlug = String(body.role || "").toLowerCase();
     const role = getRoleBySlug(roleSlug);
     if (!role) {
       sendJson(req, res, 400, { error: "Invalid role", code: "INVALID_ROLE" });
@@ -208,10 +88,7 @@ async function handleAuthRoutes(req, res, url, parseBody, sendJson) {
     let user = null;
     let method = "password";
 
-    if (roleSlug === "customer") {
-      const identifier = String(body.identifier || body.email || body.phone || "").trim();
-      user = validateEmail(identifier) ? findUserByEmail(identifier) : findUserByPhone(identifier);
-    } else if (roleSlug === "driver") {
+    if (roleSlug === "driver") {
       if (body.loginMethod === "otp") {
         method = "otp";
         user = findUserByPhone(body.phone);
@@ -284,14 +161,6 @@ async function handleAuthRoutes(req, res, url, parseBody, sendJson) {
       }
     }
 
-    if (user.status === "pending" && roleSlug === "customer") {
-      sendJson(req, res, 403, {
-        error: "Please verify your email and phone before signing in",
-        code: "VERIFICATION_REQUIRED"
-      });
-      return true;
-    }
-
     await resetFailedLogins(user);
     user.lastLoginAt = new Date().toISOString();
     user.updatedAt = new Date().toISOString();
@@ -308,7 +177,6 @@ async function handleAuthRoutes(req, res, url, parseBody, sendJson) {
 
     const profile = getProfile(user);
     const redirectMap = {
-      customer: "/profile/",
       driver: "/profile/#driver",
       dispatcher: "/profile/#dispatcher",
       hospital_admin: "/profile/#hospital-admin",

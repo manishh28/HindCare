@@ -301,16 +301,27 @@ function createBooking(body) {
 
 function serveStatic(req, res) {
   const requestPath = new URL(req.url, `http://${req.headers.host}`).pathname;
-  const relativePath = requestPath === "/" ? "index.html" : requestPath.slice(1);
-  const filePath = path.normalize(path.join(FRONTEND_DIR, relativePath));
+  let relativePath = requestPath === "/" ? "index.html" : requestPath.slice(1).replace(/\/$/, "");
 
-  if (!filePath.startsWith(FRONTEND_DIR)) {
-    sendJson(req, res, 403, { error: "Forbidden" });
-    return;
+  // /auth/ and /auth both resolve to auth/index.html
+  const candidates = [];
+  if (relativePath === "index.html" || relativePath === "") {
+    candidates.push(path.join(FRONTEND_DIR, "index.html"));
+  } else {
+    candidates.push(path.join(FRONTEND_DIR, relativePath));
+    if (!path.extname(relativePath)) {
+      candidates.push(path.join(FRONTEND_DIR, relativePath, "index.html"));
+    }
   }
 
-  fs.readFile(filePath, (error, content) => {
-    if (error) {
+  const isSubApp = /^auth(\/|$)/.test(relativePath) || /^profile(\/|$)/.test(relativePath);
+
+  function tryCandidate(index) {
+    if (index >= candidates.length) {
+      if (isSubApp) {
+        sendJson(req, res, 404, { error: "Not found" });
+        return;
+      }
       fs.readFile(path.join(FRONTEND_DIR, "index.html"), (indexError, indexContent) => {
         if (indexError) {
           sendJson(req, res, 404, { error: "Not found" });
@@ -322,20 +333,54 @@ function serveStatic(req, res) {
       return;
     }
 
-    const ext = path.extname(filePath);
-    const types = {
-      ".html": "text/html; charset=utf-8",
-      ".css": "text/css; charset=utf-8",
-      ".js": "text/javascript; charset=utf-8",
-      ".json": "application/json; charset=utf-8",
-      ".png": "image/png",
-      ".svg": "image/svg+xml",
-      ".woff2": "font/woff2"
-    };
+    const filePath = path.normalize(candidates[index]);
+    if (!filePath.startsWith(FRONTEND_DIR)) {
+      sendJson(req, res, 403, { error: "Forbidden" });
+      return;
+    }
 
-    res.writeHead(200, { "Content-Type": types[ext] || "application/octet-stream" });
-    res.end(content);
-  });
+    fs.stat(filePath, (statErr, stat) => {
+      if (!statErr && stat.isDirectory()) {
+        const indexPath = path.normalize(path.join(filePath, "index.html"));
+        if (!indexPath.startsWith(FRONTEND_DIR)) {
+          sendJson(req, res, 403, { error: "Forbidden" });
+          return;
+        }
+        fs.readFile(indexPath, (error, content) => {
+          if (error) {
+            tryCandidate(index + 1);
+            return;
+          }
+          res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+          res.end(content);
+        });
+        return;
+      }
+
+      fs.readFile(filePath, (error, content) => {
+        if (error) {
+          tryCandidate(index + 1);
+          return;
+        }
+
+        const ext = path.extname(filePath);
+        const types = {
+          ".html": "text/html; charset=utf-8",
+          ".css": "text/css; charset=utf-8",
+          ".js": "text/javascript; charset=utf-8",
+          ".json": "application/json; charset=utf-8",
+          ".png": "image/png",
+          ".svg": "image/svg+xml",
+          ".woff2": "font/woff2"
+        };
+
+        res.writeHead(200, { "Content-Type": types[ext] || "application/octet-stream" });
+        res.end(content);
+      });
+    });
+  }
+
+  tryCandidate(0);
 }
 
 async function handleApi(req, res) {

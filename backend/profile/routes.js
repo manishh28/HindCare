@@ -5,11 +5,6 @@ const {
   store,
   nextAddressId,
   nextEmergencyId,
-  nextMedicalId,
-  nextAllergyId,
-  nextInsuranceId,
-  nextLocationId,
-  nextPaymentId,
   nextDocumentId
 } = require("../auth/store");
 
@@ -156,54 +151,6 @@ async function handleProfileRoutes(req, res, url, parseBody, sendJson) {
     return true;
   }
 
-  // ---- Medical info ----
-  if (req.method === "GET" && url.pathname === "/api/profile/medical") {
-    const auth = requireAuth(req, res, sendJson);
-    if (!auth) return true;
-    sendJson(req, res, 200, {
-      conditions: store.medicalInfo.filter(m => m.userId === auth.user.id),
-      allergies: store.allergies.filter(a => a.userId === auth.user.id)
-    });
-    return true;
-  }
-
-  if (req.method === "POST" && url.pathname === "/api/profile/medical/conditions") {
-    const auth = requireAuth(req, res, sendJson);
-    if (!auth) return true;
-
-    const body = await parseBody(req);
-    const condition = {
-      id: nextMedicalId(),
-      userId: auth.user.id,
-      conditionName: String(body.conditionName).trim(),
-      severity: body.severity || "moderate",
-      notes: body.notes || null,
-      diagnosedAt: body.diagnosedAt || null,
-      createdAt: new Date().toISOString()
-    };
-    store.medicalInfo.push(condition);
-    sendJson(req, res, 201, condition);
-    return true;
-  }
-
-  if (req.method === "POST" && url.pathname === "/api/profile/medical/allergies") {
-    const auth = requireAuth(req, res, sendJson);
-    if (!auth) return true;
-
-    const body = await parseBody(req);
-    const allergy = {
-      id: nextAllergyId(),
-      userId: auth.user.id,
-      allergen: String(body.allergen).trim(),
-      reaction: body.reaction || null,
-      severity: body.severity || "moderate",
-      createdAt: new Date().toISOString()
-    };
-    store.allergies.push(allergy);
-    sendJson(req, res, 201, allergy);
-    return true;
-  }
-
   // ---- Notification preferences ----
   if (req.method === "GET" && url.pathname === "/api/profile/notifications") {
     const auth = requireAuth(req, res, sendJson);
@@ -275,15 +222,7 @@ async function handleProfileRoutes(req, res, url, parseBody, sendJson) {
     const auth = requireAuth(req, res, sendJson);
     if (!auth) return true;
 
-    if (!["customer"].includes(auth.user.roleSlug)) {
-      sendJson(req, res, 403, { error: "Account deletion not available for this role. Contact administrator." });
-      return true;
-    }
-
-    auth.user.status = "deleted";
-    auth.user.deletedAt = new Date().toISOString();
-    auditAction(req, auth.user.id, "account.deleted", "user", auth.user.id);
-    sendJson(req, res, 200, { message: "Account scheduled for deletion" });
+    sendJson(req, res, 403, { error: "Account deletion isn't self-service for staff accounts. Contact an administrator." });
     return true;
   }
 
@@ -328,16 +267,6 @@ function getRelatedData(userId, roleSlug) {
     notificationPrefs: store.notificationPrefs.find(p => p.userId === userId)
   };
 
-  if (roleSlug === "customer") {
-    data.medicalConditions = store.medicalInfo.filter(m => m.userId === userId);
-    data.allergies = store.allergies.filter(a => a.userId === userId);
-    data.insurance = store.insurance.filter(i => i.userId === userId);
-    data.savedLocations = store.savedLocations.filter(l => l.userId === userId);
-    data.paymentMethods = store.paymentMethods.filter(p => p.userId === userId);
-    data.documents = store.documents.filter(d => d.userId === userId);
-    data.favouriteHospitals = store.favouriteHospitals.filter(f => f.userId === userId);
-  }
-
   if (roleSlug === "driver") {
     data.bankDetails = store.driverBankDetails.find(b => b.userId === userId) || null;
     data.documents = store.documents.filter(d => d.userId === userId);
@@ -359,7 +288,6 @@ function getRelatedData(userId, roleSlug) {
 function getEditableFields(roleSlug) {
   const common = ["profilePhotoUrl"];
   const map = {
-    customer: [...common, "fullName", "gender", "dateOfBirth", "bloodGroup", "heightCm", "weightKg", "languagePreference", "notificationEmail", "notificationSms", "notificationPush", "privacyShareLocation", "privacyShareMedical"],
     driver: [...common, "fullName", "emergencyContactName", "emergencyContactPhone", "languages"],
     dispatcher: [...common, "fullName"],
     hospital_admin: [...common, "adminName", "phone", "gstNumber", "notificationEmail", "notificationSms"],

@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign In — HindCare</title>
+  <meta name="description" content="Secure sign in to HindCare emergency healthcare platform">
+  <link rel="stylesheet" href="/auth/css/md3-design-system.css">
+  <link rel="stylesheet" href="/auth/css/auth.css">
+  <style>.hidden { display: none !important; }</style>
+</head>
+<body>
+  <a class="sr-only" href="#auth-screen">Skip to sign in form</a>
+
+  <div class="auth-layout">
+    <aside class="auth-brand-panel" aria-label="HindCare platform information">
+      <div class="auth-brand-content">
+        <div class="auth-brand-logo">
+          <svg viewBox="0 0 48 48" fill="none" aria-hidden="true">
+            <rect width="48" height="48" rx="12" fill="rgba(255,255,255,0.15)"/>
+            <path d="M24 12v24M12 24h24" stroke="#fff" stroke-width="3" stroke-linecap="round"/>
+          </svg>
+          <span>HindCare</span>
+        </div>
+        <h1>Emergency care, simplified.</h1>
+        <p>Trusted by hospitals across India. Book ambulances, manage your health profile, and get help when every minute matters.</p>
+      </div>
+      <div class="auth-brand-features">
+        <div class="auth-brand-feature">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/></svg>
+          Bank-grade security &amp; encryption
+        </div>
+        <div class="auth-brand-feature">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M13 3c-4.97 0-9 4.03-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42C8.27 19.99 10.51 21 13 21c4.97 0 9-4.03 9-9s-4.03-9-9-9z"/></svg>
+          24/7 emergency dispatch network
+        </div>
+        <div class="auth-brand-feature">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+          WCAG AA accessible for all ages
+        </div>
+      </div>
+    </aside>
+
+    <main class="auth-main-panel">
+      <div class="auth-container">
+        <div id="auth-screen" role="main" aria-live="polite"></div>
+      </div>
+    </main>
+  </div>
+
+  <div id="global-loader" class="loading-overlay hidden" aria-hidden="true">
+    <div class="spinner" role="status"><span class="sr-only">Loading…</span></div>
+  </div>
+
+  <script type="module" src="/auth/js/app.js"></script>
+</body>
+</html>

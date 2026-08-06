@@ -166,6 +166,7 @@
   flex-shrink: 0;
 }
 
+.role-icon.customer { background: var(--md-sys-color-primary-container); color: var(--md-sys-color-on-primary-container); }
 .role-icon.driver { background: var(--md-sys-color-secondary-container); color: var(--md-sys-color-on-secondary-container); }
 .role-icon.dispatcher { background: var(--md-sys-color-tertiary-container); color: var(--md-sys-color-on-tertiary-container); }
 .role-icon.hospital_admin { background: var(--md-sys-color-warning-container); color: var(--md-sys-color-warning); }

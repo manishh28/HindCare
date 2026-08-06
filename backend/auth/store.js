@@ -12,15 +12,13 @@ const {
 } = require("./crypto");
 
 const ROLES = [
-  { id: 1, slug: "customer", name: "Customer / Patient", mfaRequired: false },
-  { id: 2, slug: "driver", name: "Ambulance Driver", mfaRequired: false },
-  { id: 3, slug: "dispatcher", name: "Dispatcher / Call Center", mfaRequired: false },
-  { id: 4, slug: "hospital_admin", name: "Hospital Admin", mfaRequired: true },
-  { id: 5, slug: "super_admin", name: "Super Admin", mfaRequired: true }
+  { id: 1, slug: "driver", name: "Ambulance Driver", mfaRequired: false },
+  { id: 2, slug: "dispatcher", name: "Dispatcher / Call Center", mfaRequired: false },
+  { id: 3, slug: "hospital_admin", name: "Hospital Admin", mfaRequired: true },
+  { id: 4, slug: "super_admin", name: "Super Admin", mfaRequired: true }
 ];
 
 const ROLE_PERMISSIONS = {
-  customer: ["bookings.create", "bookings.read", "profile.read", "profile.update"],
   driver: ["bookings.read", "bookings.update", "profile.read", "profile.update"],
   dispatcher: ["bookings.read", "bookings.update", "bookings.dispatch", "profile.read", "profile.update"],
   hospital_admin: ["bookings.read", "hospitals.manage", "ambulances.manage", "profile.read", "profile.update", "audit.read"],
@@ -33,11 +31,6 @@ let nextAuditId = 1;
 let nextLoginId = 1;
 let nextAddressId = 1;
 let nextEmergencyId = 1;
-let nextMedicalId = 1;
-let nextAllergyId = 1;
-let nextInsuranceId = 1;
-let nextLocationId = 1;
-let nextPaymentId = 1;
 let nextDocumentId = 1;
 
 const store = {
@@ -47,20 +40,13 @@ const store = {
   resetTokens: [],
   auditLogs: [],
   loginHistory: [],
-  customerProfiles: [],
   driverProfiles: [],
   dispatcherProfiles: [],
   hospitalAdminProfiles: [],
   superAdminProfiles: [],
   addresses: [],
   emergencyContacts: [],
-  medicalInfo: [],
-  allergies: [],
-  insurance: [],
-  savedLocations: [],
-  paymentMethods: [],
   documents: [],
-  favouriteHospitals: [],
   driverBankDetails: [],
   notificationPrefs: [],
   apiKeys: []
@@ -70,12 +56,6 @@ async function seedDemoUsers() {
   const demoPassword = await hashPassword("HindCare@2026");
 
   const demos = [
-    {
-      roleSlug: "customer",
-      email: "patient.demo@hindcare.in",
-      phone: "+919876543210",
-      profile: { fullName: "Priya Sharma", gender: "female", dateOfBirth: "1992-05-15", bloodGroup: "B+", heightCm: 162, weightKg: 58 }
-    },
     {
       roleSlug: "driver",
       employeeId: "DRV-1001",
@@ -137,36 +117,11 @@ async function seedDemoUsers() {
     store.users.push(user);
     attachProfile(user, demo.profile);
   }
-
-  store.emergencyContacts.push({
-    id: nextEmergencyId++,
-    userId: 1,
-    name: "Ramesh Sharma",
-    relationship: "Father",
-    phone: "+919876543211",
-    isPrimary: true
-  });
-
-  store.addresses.push({
-    id: nextAddressId++,
-    userId: 1,
-    label: "home",
-    line1: "42 Gomti Nagar Extension",
-    line2: "Near City Mall",
-    city: "Lucknow",
-    state: "Uttar Pradesh",
-    pincode: "226010",
-    country: "India",
-    isDefault: true
-  });
 }
 
 function attachProfile(user, profile) {
   const base = { userId: user.id, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
   switch (user.roleSlug) {
-    case "customer":
-      store.customerProfiles.push({ ...base, profilePhotoUrl: null, languagePreference: "en", notificationEmail: true, notificationSms: true, notificationPush: true, privacyShareLocation: true, privacyShareMedical: false, walletBalance: 250, ...profile });
-      break;
     case "driver":
       store.driverProfiles.push({ ...base, profilePhotoUrl: null, languages: ["en", "hi"], emergencyContactName: "Sunita Singh", emergencyContactPhone: "+919111111112", currentShiftStart: null, currentShiftEnd: null, ...profile });
       break;
@@ -185,9 +140,9 @@ function attachProfile(user, profile) {
   store.notificationPrefs.push({
     userId: user.id,
     bookingUpdates: true,
-    promotions: user.roleSlug === "customer",
+    promotions: false,
     securityAlerts: true,
-    shiftReminders: user.roleSlug !== "customer",
+    shiftReminders: true,
     systemMaintenance: true,
     updatedAt: new Date().toISOString()
   });
@@ -365,8 +320,6 @@ function revokeAllSessions(userId, exceptSessionId) {
 
 function getProfile(user) {
   switch (user.roleSlug) {
-    case "customer":
-      return store.customerProfiles.find(p => p.userId === user.id);
     case "driver":
       return store.driverProfiles.find(p => p.userId === user.id);
     case "dispatcher":
@@ -433,10 +386,5 @@ module.exports = {
   nextUserId: () => nextUserId++,
   nextAddressId: () => nextAddressId++,
   nextEmergencyId: () => nextEmergencyId++,
-  nextMedicalId: () => nextMedicalId++,
-  nextAllergyId: () => nextAllergyId++,
-  nextInsuranceId: () => nextInsuranceId++,
-  nextLocationId: () => nextLocationId++,
-  nextPaymentId: () => nextPaymentId++,
   nextDocumentId: () => nextDocumentId++
 };
