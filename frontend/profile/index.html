@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>My Profile — HindCare</title>
+  <meta name="description" content="HindCare staff profile and account dashboard">
+  <link rel="stylesheet" href="/auth/css/md3-design-system.css">
+  <link rel="stylesheet" href="/profile/css/profile.css">
+  <style>.hidden { display: none !important; }</style>
+</head>
+<body>
+  <a class="sr-only" href="#profile-main">Skip to main content</a>
+
+  <div class="profile-layout">
+    <div class="sidebar-overlay" id="sidebar-overlay"></div>
+
+    <aside class="profile-sidebar" id="profile-sidebar" aria-label="Account navigation">
+      <a href="/" class="sidebar-brand">
+        <div class="sidebar-brand-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none">
+            <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z" fill="currentColor"/>
+          </svg>
+        </div>
+        <span>HindCare</span>
+      </a>
+
+      <div class="sidebar-user" id="sidebar-user">
+        <div class="avatar" id="sidebar-avatar">—</div>
+        <div class="sidebar-user-info">
+          <h3 id="sidebar-user-name">Loading…</h3>
+          <span class="role-badge" id="sidebar-user-role">—</span>
+        </div>
+      </div>
+
+      <nav class="sidebar-nav" id="sidebar-nav" aria-label="Dashboard sections"></nav>
+
+      <div class="sidebar-footer">
+        <button type="button" class="nav-item danger" id="logout-btn">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16 17v-3H9v-4h7V7l5 5-5 5M14 2a2 2 0 012 2v2h-2V4H5v16h9v-2h2v2a2 2 0 01-2 2H5a2 2 0 01-2-2V4a2 2 0 012-2h9z"/></svg>
+          Sign out
+        </button>
+      </div>
+    </aside>
+
+    <div class="profile-main">
+      <header class="profile-header">
+        <div style="display:flex; align-items:center; gap:0.75rem;">
+          <button type="button" class="mobile-nav-toggle" id="mobile-nav-toggle" aria-label="Open menu">☰</button>
+          <h1 id="page-title">Overview</h1>
+        </div>
+        <div class="header-actions">
+          <a href="/" class="md-btn md-btn-text">Back to site</a>
+        </div>
+      </header>
+
+      <main class="profile-content" id="profile-main" role="main" aria-live="polite">
+        <div class="profile-grid" id="profile-content">
+          <div class="skeleton" style="height:180px; border-radius:16px;"></div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <div id="toast" class="md-alert hidden" role="status" style="position:fixed; bottom:1.5rem; right:1.5rem; max-width:360px; z-index:200;"></div>
+
+  <script type="module" src="/profile/js/app.js"></script>
+</body>
+</html>
