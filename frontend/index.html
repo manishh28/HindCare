@@ -23,6 +23,7 @@
         <button type="button" data-open="network-panel">Network</button>
         <button type="button" data-open="partner-panel">Partner with us</button>
         <button type="button" data-open="chat-panel">Assistant</button>
+        <button type="button" id="account-nav-btn" data-open="account-panel">Sign in</button>
       </nav>
     </header>
 
@@ -475,7 +476,7 @@
           <p><strong>Why we use it.</strong> To match ambulances and hospitals, show booking status, onboard partners, and improve the service. We do not sell personal data.</p>
           <p><strong>Retention.</strong> Demo data lives in memory and resets when the server restarts. A production deployment will define retention, encryption, and access controls in a database.</p>
           <p><strong>Sharing.</strong> In a live system, pickup and contact details would be shared only with assigned fleet operators, selected hospitals, and admins who need them for dispatch — not with the general public.</p>
-          <p><strong>Your choices.</strong> You can track a booking with booking ID and phone. Contact support to request correction or deletion once real accounts exist.</p>
+          <p><strong>Your choices.</strong> You can track a booking with booking ID and phone, or sign in to see your booking history. Contact support to request correction or deletion of your account.</p>
           <p><strong>Security.</strong> Do not submit real sensitive medical records in this demo. A production version will use encrypted storage, access controls, and audit logging.</p>
         </div>
       </div>
@@ -560,6 +561,79 @@
             <button type="submit" class="cta-primary cta-block">Submit for review</button>
             <p class="form-result" id="fleet-partner-result" role="status"></p>
           </form>
+        </div>
+      </div>
+    </div>
+
+    <div class="overlay-backdrop hidden" id="account-panel-backdrop" data-close="account-panel">
+      <div class="modal-panel modal-panel-narrow" role="dialog" aria-modal="true" aria-labelledby="account-panel-title" id="account-panel">
+        <button type="button" class="panel-close" data-close="account-panel" aria-label="Close account panel">✕</button>
+
+        <div id="account-auth-view">
+          <p class="eyebrow">[ MY ACCOUNT ]</p>
+          <h2 id="account-panel-title">Sign in</h2>
+          <p class="section-sub">An account is never required to book — it just saves your details and shows your booking history for next time.</p>
+
+          <form id="account-signin-form" class="partner-form">
+            <label>
+              Phone or email
+              <input name="identifier" placeholder="+91-9876543210" required autocomplete="username">
+            </label>
+            <label>
+              Password
+              <input type="password" name="password" required autocomplete="current-password">
+            </label>
+            <button type="submit" class="cta-primary cta-block">Sign in</button>
+            <p class="form-result" id="account-signin-result" role="status"></p>
+          </form>
+          <p><button type="button" class="footer-link-button" id="show-signup-btn">New here? Create an account</button></p>
+
+          <form id="account-signup-form" class="partner-form hidden">
+            <label>
+              Full name
+              <input name="fullName" placeholder="Manish Kumar" required autocomplete="name">
+            </label>
+            <label>
+              Phone
+              <input name="phone" placeholder="+91-9876543210" required autocomplete="tel">
+            </label>
+            <label>
+              Email (optional)
+              <input type="email" name="email" placeholder="you@example.com" autocomplete="email">
+            </label>
+            <label>
+              Password
+              <input type="password" name="password" required autocomplete="new-password">
+            </label>
+            <button type="submit" class="cta-primary cta-block">Create account</button>
+            <p class="form-result" id="account-signup-result" role="status"></p>
+          </form>
+          <p class="hidden" id="show-signin-note"><button type="button" class="footer-link-button" id="show-signin-btn">Already have an account? Sign in</button></p>
+        </div>
+
+        <div class="hidden" id="account-dashboard-view">
+          <p class="eyebrow">[ MY ACCOUNT ]</p>
+          <h2>Hi, <span id="account-name">there</span></h2>
+          <p class="section-sub" id="account-phone"></p>
+
+          <div class="partner-screen" style="margin-top:18px;">
+            <h3>Account details</h3>
+            <form id="account-edit-form" class="partner-form">
+              <label>
+                Full name
+                <input name="fullName" id="account-fullname-input" required>
+              </label>
+              <button type="submit" class="cta-secondary">Save</button>
+              <p class="form-result" id="account-edit-result" role="status"></p>
+            </form>
+          </div>
+
+          <div class="partner-screen">
+            <h3>My bookings</h3>
+            <div class="list" id="account-bookings-list"><p class="empty-note">Loading…</p></div>
+          </div>
+
+          <button type="button" class="ghost-button danger" id="account-signout-btn" style="margin-top:20px;">Sign out</button>
         </div>
       </div>
     </div>

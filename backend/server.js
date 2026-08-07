@@ -4,6 +4,7 @@ const path = require("path");
 const { handleMessage, emptySession } = require("../chatbot/chatbot");
 const { handleAuthRoutes } = require("./auth/routes");
 const { handleProfileRoutes } = require("./profile/routes");
+const { authenticate } = require("./auth/middleware");
 
 const PORT = Number(process.env.PORT || 4173);
 const HOST = process.env.HOST || "127.0.0.1";
@@ -172,7 +173,7 @@ function findBestAmbulance(pickupText) {
   return best ? { ambulance: best, distanceKm: Math.round(bestDistance * 10) / 10 } : { ambulance: available[0], distanceKm: null };
 }
 
-function createBooking(body) {
+function createBooking(body, customerId = null) {
   const missing = requireFields(body, ["patientName", "phone", "pickup"]);
   if (!String(body.destination || "").trim() && !body.hospitalId) missing.push("destination");
   if (missing.length) return { statusCode: 400, error: "Missing required fields", fields: missing };
@@ -199,6 +200,7 @@ function createBooking(body) {
     pickup: String(body.pickup).trim(),
     destination: hospital ? hospital.name : String(body.destination).trim(),
     hospitalId: hospital ? hospital.id : null,
+    customerId,
     emergencyType,
     ambulanceId: ambulance ? ambulance.id : null,
     dispatchDistanceKm: distanceKm,
@@ -427,9 +429,22 @@ async function handleApi(req, res) {
   }
   if (req.method === "POST" && url.pathname === "/api/bookings") {
     const body = await parseBody(req);
-    const result = createBooking(body);
+    const auth = authenticate(req);
+    const customerId = auth && auth.user.roleSlug === "customer" ? auth.user.id : null;
+    const result = createBooking(body, customerId);
     if (result.error) { sendJson(req, res, result.statusCode, { error: result.error, fields: result.fields }); return; }
     sendJson(req, res, 201, result.booking);
+    return;
+  }
+  if (req.method === "GET" && url.pathname === "/api/my-bookings") {
+    const auth = authenticate(req);
+    if (!auth || auth.user.roleSlug !== "customer") {
+      sendJson(req, res, 401, { error: "Sign in to view your bookings", code: "AUTH_REQUIRED" });
+      return;
+    }
+    const phoneKey = lastDigits(auth.user.phone);
+    const mine = db.bookings.filter(b => b.customerId === auth.user.id || (phoneKey && lastDigits(b.phone) === phoneKey));
+    sendJson(req, res, 200, mine.slice().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
     return;
   }
   const bookingMatch = url.pathname.match(/^\/api\/bookings\/(\d+)$/);
@@ -463,7 +478,9 @@ async function handleApi(req, res) {
 
     let booking = null;
     if (result.nextAction === "create_booking" && result.readyBooking) {
-      const outcome = createBooking(result.readyBooking);
+      const chatAuth = authenticate(req);
+      const chatCustomerId = chatAuth && chatAuth.user.roleSlug === "customer" ? chatAuth.user.id : null;
+      const outcome = createBooking(result.readyBooking, chatCustomerId);
       if (outcome.booking) {
         booking = outcome.booking;
         const amb = booking.ambulanceId ? db.ambulances.find(a => a.id === booking.ambulanceId) : null;

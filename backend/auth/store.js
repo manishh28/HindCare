@@ -15,14 +15,16 @@ const ROLES = [
   { id: 1, slug: "driver", name: "Ambulance Driver", mfaRequired: false },
   { id: 2, slug: "dispatcher", name: "Dispatcher / Call Center", mfaRequired: false },
   { id: 3, slug: "hospital_admin", name: "Hospital Admin", mfaRequired: true },
-  { id: 4, slug: "super_admin", name: "Super Admin", mfaRequired: true }
+  { id: 4, slug: "super_admin", name: "Super Admin", mfaRequired: true },
+  { id: 5, slug: "customer", name: "Patient", mfaRequired: false }
 ];
 
 const ROLE_PERMISSIONS = {
   driver: ["bookings.read", "bookings.update", "profile.read", "profile.update"],
   dispatcher: ["bookings.read", "bookings.update", "bookings.dispatch", "profile.read", "profile.update"],
   hospital_admin: ["bookings.read", "hospitals.manage", "ambulances.manage", "profile.read", "profile.update", "audit.read"],
-  super_admin: ["bookings.read", "bookings.update", "bookings.dispatch", "hospitals.manage", "ambulances.manage", "users.manage", "audit.read", "system.configure", "profile.read", "profile.update"]
+  super_admin: ["bookings.read", "bookings.update", "bookings.dispatch", "hospitals.manage", "ambulances.manage", "users.manage", "audit.read", "system.configure", "profile.read", "profile.update"],
+  customer: ["bookings.read", "profile.read", "profile.update"]
 };
 
 let nextUserId = 6;
@@ -44,6 +46,7 @@ const store = {
   dispatcherProfiles: [],
   hospitalAdminProfiles: [],
   superAdminProfiles: [],
+  customerProfiles: [],
   addresses: [],
   emergencyContacts: [],
   documents: [],
@@ -133,6 +136,9 @@ function attachProfile(user, profile) {
       break;
     case "super_admin":
       store.superAdminProfiles.push({ ...base, profilePhotoUrl: null, apiKeysEnabled: true, ...profile });
+      break;
+    case "customer":
+      store.customerProfiles.push({ ...base, profilePhotoUrl: null, fullName: profile.fullName });
       break;
     default:
       break;
@@ -328,6 +334,8 @@ function getProfile(user) {
       return store.hospitalAdminProfiles.find(p => p.userId === user.id);
     case "super_admin":
       return store.superAdminProfiles.find(p => p.userId === user.id);
+    case "customer":
+      return store.customerProfiles.find(p => p.userId === user.id);
     default:
       return null;
   }
@@ -380,6 +388,7 @@ module.exports = {
   revokeSession,
   revokeAllSessions,
   getProfile,
+  attachProfile,
   sanitizeUser,
   hashPassword,
   verifyPassword,
