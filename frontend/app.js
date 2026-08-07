@@ -362,7 +362,8 @@ const PANEL_TARGETS = {
   "network-panel": "network-panel-backdrop",
   "contact-panel": "contact-panel-backdrop",
   "terms-panel": "terms-panel-backdrop",
-  "privacy-panel": "privacy-panel-backdrop"
+  "privacy-panel": "privacy-panel-backdrop",
+  "account-panel": "account-panel-backdrop"
 };
 
 function panelElement(key) {
@@ -372,6 +373,7 @@ function panelElement(key) {
 function openPanel(key) {
   const el = panelElement(key);
   if (el) el.classList.remove("hidden");
+  if (key === "account-panel") renderAccountPanel();
 }
 
 function closePanel(key) {
@@ -404,6 +406,7 @@ document.addEventListener("keydown", event => {
     closePanel("contact-panel");
     closePanel("terms-panel");
     closePanel("privacy-panel");
+    closePanel("account-panel");
   }
 });
 
@@ -594,3 +597,210 @@ const footerYear = document.getElementById("footer-year");
 if (footerYear) {
   footerYear.textContent = String(new Date().getFullYear());
 }
+
+// ---------------------------------------------------------------------
+// Patient accounts — entirely optional. Booking works with no account at
+// all; signing in just saves your name/phone for next time and shows a
+// history of bookings tied to your account or made as a guest with the
+// same phone number. Kept in its own storage namespace (hindcare_patient_*)
+// so it never collides with the separate staff/ERP session under /auth/.
+// ---------------------------------------------------------------------
+
+const PATIENT_KEY = "hindcare_patient";
+
+const patientState = {
+  accessToken: localStorage.getItem(`${PATIENT_KEY}_token`) || null,
+  refreshToken: localStorage.getItem(`${PATIENT_KEY}_refresh`) || null,
+  user: JSON.parse(localStorage.getItem(`${PATIENT_KEY}_user`) || "null"),
+  profile: JSON.parse(localStorage.getItem(`${PATIENT_KEY}_profile`) || "null")
+};
+
+function savePatientAuth(data) {
+  patientState.accessToken = data.accessToken;
+  patientState.refreshToken = data.refreshToken;
+  patientState.user = data.user;
+  patientState.profile = data.profile;
+  localStorage.setItem(`${PATIENT_KEY}_token`, data.accessToken);
+  if (data.refreshToken) localStorage.setItem(`${PATIENT_KEY}_refresh`, data.refreshToken);
+  localStorage.setItem(`${PATIENT_KEY}_user`, JSON.stringify(data.user));
+  localStorage.setItem(`${PATIENT_KEY}_profile`, JSON.stringify(data.profile));
+}
+
+function clearPatientAuth() {
+  patientState.accessToken = null;
+  patientState.refreshToken = null;
+  patientState.user = null;
+  patientState.profile = null;
+  localStorage.removeItem(`${PATIENT_KEY}_token`);
+  localStorage.removeItem(`${PATIENT_KEY}_refresh`);
+  localStorage.removeItem(`${PATIENT_KEY}_user`);
+  localStorage.removeItem(`${PATIENT_KEY}_profile`);
+}
+
+async function patientApi(path, options = {}) {
+  const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
+  if (patientState.accessToken) headers.Authorization = `Bearer ${patientState.accessToken}`;
+
+  let response = await fetch(path, { ...options, headers });
+  let data = await response.json().catch(() => ({}));
+
+  if (response.status === 401 && patientState.refreshToken && !options._retried) {
+    const refreshRes = await fetch("/api/auth/refresh", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refreshToken: patientState.refreshToken })
+    });
+    if (refreshRes.ok) {
+      const refreshData = await refreshRes.json();
+      patientState.accessToken = refreshData.accessToken;
+      localStorage.setItem(`${PATIENT_KEY}_token`, refreshData.accessToken);
+      return patientApi(path, { ...options, _retried: true });
+    }
+    clearPatientAuth();
+    updateAccountNav();
+    throw new Error("Your session expired. Please sign in again.");
+  }
+
+  if (!response.ok) {
+    const err = new Error(data.error || "Something went wrong");
+    err.code = data.code;
+    throw err;
+  }
+  return data;
+}
+
+function updateAccountNav() {
+  const btn = document.getElementById("account-nav-btn");
+  if (!btn) return;
+  btn.textContent = patientState.user ? (patientState.profile?.fullName?.split(" ")[0] || "My account") : "Sign in";
+
+  // A light convenience touch: prefill the booking form for a returning signed-in patient.
+  if (patientState.user) {
+    const form = document.getElementById("booking-form");
+    if (form) {
+      if (!form.elements.patientName.value) form.elements.patientName.value = patientState.profile?.fullName || "";
+      if (!form.elements.phone.value) form.elements.phone.value = patientState.user.phone || "";
+    }
+  }
+}
+
+function renderAccountPanel() {
+  const authView = document.getElementById("account-auth-view");
+  const dashView = document.getElementById("account-dashboard-view");
+
+  if (!patientState.user) {
+    authView.classList.remove("hidden");
+    dashView.classList.add("hidden");
+    return;
+  }
+
+  authView.classList.add("hidden");
+  dashView.classList.remove("hidden");
+  document.getElementById("account-name").textContent = patientState.profile?.fullName || "there";
+  document.getElementById("account-phone").textContent = patientState.user.phone || "";
+  document.getElementById("account-fullname-input").value = patientState.profile?.fullName || "";
+  renderAccountBookings();
+}
+
+async function renderAccountBookings() {
+  const list = document.getElementById("account-bookings-list");
+  list.innerHTML = `<p class="empty-note">Loading…</p>`;
+  try {
+    const bookings = await patientApi("/api/my-bookings");
+    if (!bookings.length) {
+      list.innerHTML = `<p class="empty-note">No bookings yet. Once you book an ambulance, it'll show up here.</p>`;
+      return;
+    }
+    list.innerHTML = bookings.map(booking => `
+      <article class="item">
+        <div class="item-header">
+          <strong>#${booking.id}</strong>
+          ${statusChip(booking.status)}
+        </div>
+        <p>${booking.pickup} → ${booking.destination}</p>
+        <p class="item-meta">${new Date(booking.createdAt).toLocaleString("en-IN")}${booking.dispatchDistanceKm != null ? ` · ~${booking.dispatchDistanceKm} km` : ""}</p>
+      </article>
+    `).join("");
+  } catch (error) {
+    list.innerHTML = `<p class="load-error">${error.message}</p>`;
+  }
+}
+
+document.getElementById("show-signup-btn").addEventListener("click", () => {
+  document.getElementById("account-signin-form").classList.add("hidden");
+  document.getElementById("show-signup-btn").parentElement.classList.add("hidden");
+  document.getElementById("account-signup-form").classList.remove("hidden");
+  document.getElementById("show-signin-note").classList.remove("hidden");
+});
+
+document.getElementById("show-signin-btn").addEventListener("click", () => {
+  document.getElementById("account-signup-form").classList.add("hidden");
+  document.getElementById("show-signin-note").classList.add("hidden");
+  document.getElementById("account-signin-form").classList.remove("hidden");
+  document.getElementById("show-signup-btn").parentElement.classList.remove("hidden");
+});
+
+document.getElementById("account-signin-form").addEventListener("submit", async event => {
+  event.preventDefault();
+  const { identifier, password } = formToObject(event.currentTarget);
+  const result = document.getElementById("account-signin-result");
+  result.textContent = "Signing in…";
+  try {
+    const data = await patientApi("/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ role: "customer", identifier, password })
+    });
+    savePatientAuth(data);
+    updateAccountNav();
+    event.currentTarget.reset();
+    result.textContent = "";
+    renderAccountPanel();
+  } catch (error) {
+    result.textContent = error.message;
+  }
+});
+
+document.getElementById("account-signup-form").addEventListener("submit", async event => {
+  event.preventDefault();
+  const payload = formToObject(event.currentTarget);
+  const result = document.getElementById("account-signup-result");
+  result.textContent = "Creating your account…";
+  try {
+    const data = await patientApi("/api/auth/signup", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+    savePatientAuth(data);
+    updateAccountNav();
+    event.currentTarget.reset();
+    result.textContent = "";
+    renderAccountPanel();
+  } catch (error) {
+    result.textContent = error.message;
+  }
+});
+
+document.getElementById("account-edit-form").addEventListener("submit", async event => {
+  event.preventDefault();
+  const { fullName } = formToObject(event.currentTarget);
+  const result = document.getElementById("account-edit-result");
+  result.textContent = "Saving…";
+  try {
+    const res = await patientApi("/api/profile", { method: "PATCH", body: JSON.stringify({ fullName }) });
+    patientState.profile = res.profile;
+    localStorage.setItem(`${PATIENT_KEY}_profile`, JSON.stringify(res.profile));
+    updateAccountNav();
+    result.textContent = "Saved.";
+    document.getElementById("account-name").textContent = res.profile.fullName;
+  } catch (error) {
+    result.textContent = error.message;
+  }
+});
+
+document.getElementById("account-signout-btn").addEventListener("click", () => {
+  clearPatientAuth();
+  updateAccountNav();
+  closePanel("account-panel");
+});
+
+updateAccountNav();

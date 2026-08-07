@@ -291,7 +291,8 @@ function getEditableFields(roleSlug) {
     driver: [...common, "fullName", "emergencyContactName", "emergencyContactPhone", "languages"],
     dispatcher: [...common, "fullName"],
     hospital_admin: [...common, "adminName", "phone", "gstNumber", "notificationEmail", "notificationSms"],
-    super_admin: [...common, "fullName", "organizationName"]
+    super_admin: [...common, "fullName", "organizationName"],
+    customer: [...common, "fullName"]
   };
   return map[roleSlug] || common;
 }

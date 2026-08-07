@@ -36,7 +36,7 @@
   margin-bottom: 3rem;
 }
 
-.auth-brand-logo svg { width: 48px; height: 48px; }
+.auth-brand-logo img { width: 48px; height: 48px; border-radius: 50%; object-fit: cover; }
 
 .auth-brand-logo span {
   font: var(--md-sys-typescale-headline-small);

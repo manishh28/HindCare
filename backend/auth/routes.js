@@ -20,9 +20,11 @@ const {
   revokeAllSessions,
   sanitizeUser,
   getProfile,
+  attachProfile,
   hashPassword,
   verifyPassword,
-  store
+  store,
+  nextUserId
 } = require("./store");
 
 const {
@@ -70,6 +72,91 @@ async function handleAuthRoutes(req, res, url, parseBody, sendJson) {
     return true;
   }
 
+  // ---- Patient sign up (public, customer accounts only) ----
+  if (req.method === "POST" && url.pathname === "/api/auth/signup") {
+    if (!checkRateLimit(`signup:${ipKey}`)) {
+      sendJson(req, res, 429, { error: "Too many requests. Please try again later.", code: "RATE_LIMITED" });
+      return true;
+    }
+
+    const body = await parseBody(req);
+    const missing = ["fullName", "phone", "password"].filter(f => !String(body[f] || "").trim());
+    if (missing.length) {
+      sendJson(req, res, 400, { error: "Missing required fields", fields: missing });
+      return true;
+    }
+
+    if (!validatePhone(body.phone)) {
+      sendJson(req, res, 400, { error: "Invalid phone number", code: "INVALID_PHONE" });
+      return true;
+    }
+    if (body.email && !validateEmail(body.email)) {
+      sendJson(req, res, 400, { error: "Invalid email address", code: "INVALID_EMAIL" });
+      return true;
+    }
+
+    const pwdCheck = validatePassword(body.password);
+    if (!pwdCheck.ok) {
+      sendJson(req, res, 400, { error: pwdCheck.error, code: "WEAK_PASSWORD", strength: pwdCheck.strength });
+      return true;
+    }
+
+    const phone = normalizePhone(body.phone);
+    const email = body.email ? body.email.trim().toLowerCase() : null;
+    if (findUserByPhone(phone)) {
+      sendJson(req, res, 409, { error: "An account with this phone number already exists", code: "PHONE_EXISTS" });
+      return true;
+    }
+    if (email && findUserByEmail(email)) {
+      sendJson(req, res, 409, { error: "An account with this email already exists", code: "EMAIL_EXISTS" });
+      return true;
+    }
+
+    const role = getRoleBySlug("customer");
+    const user = {
+      id: nextUserId(),
+      roleId: role.id,
+      roleSlug: role.slug,
+      employeeId: null,
+      email,
+      phone,
+      passwordHash: await hashPassword(body.password),
+      emailVerified: false,
+      phoneVerified: false,
+      mfaEnabled: false,
+      mfaSecret: null,
+      status: "active",
+      failedLoginAttempts: 0,
+      lockedUntil: null,
+      lastLoginAt: new Date().toISOString(),
+      passwordChangedAt: new Date().toISOString(),
+      googleId: null,
+      preferredLanguage: "en",
+      theme: "light",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      deletedAt: null
+    };
+    store.users.push(user);
+    attachProfile(user, { fullName: body.fullName.trim() });
+
+    const session = createSession(user.id, {
+      deviceName: body.deviceName || "Web Browser",
+      ip: meta.ip,
+      userAgent: meta.userAgent
+    });
+    const tokens = issueTokens(user, session.id);
+    auditAction(req, user.id, "user.signup", "user", user.id);
+
+    sendJson(req, res, 201, {
+      ...tokens,
+      refreshToken: session._plainRefreshToken,
+      user: sanitizeUser(user),
+      profile: sanitizeProfile(getProfile(user), user.roleSlug)
+    });
+    return true;
+  }
+
   // ---- Login (role-aware) ----
   if (req.method === "POST" && url.pathname === "/api/auth/login") {
     if (!checkRateLimit(`login:${ipKey}`)) {
@@ -105,6 +192,9 @@ async function handleAuthRoutes(req, res, url, parseBody, sendJson) {
       user = findUserByEmail(body.email);
     } else if (roleSlug === "super_admin") {
       user = findUserByEmail(body.email);
+    } else if (roleSlug === "customer") {
+      const identifier = String(body.identifier || body.phone || body.email || "").trim();
+      user = validateEmail(identifier) ? findUserByEmail(identifier) : findUserByPhone(identifier);
     }
 
     if (!user || user.roleSlug !== roleSlug) {
