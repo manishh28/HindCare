@@ -25,6 +25,20 @@
         <button type="button" data-open="chat-panel">Assistant</button>
         <button type="button" id="account-nav-btn" data-open="account-panel">Sign in</button>
       </nav>
+
+      <button type="button" class="mobile-nav-toggle" id="mobile-nav-toggle" aria-expanded="false" aria-controls="mobile-nav-menu" aria-label="Open menu">
+        <span id="mobile-nav-icon" aria-hidden="true">☰</span>
+      </button>
+
+      <nav class="mobile-nav-menu" id="mobile-nav-menu" aria-label="Mobile navigation">
+        <a href="#quick-book" class="mobile-nav-primary" data-mobile-nav-item>
+          <span aria-hidden="true">🚑</span> Book an ambulance
+        </a>
+        <button type="button" data-open="network-panel" data-mobile-nav-item>Network</button>
+        <button type="button" data-open="partner-panel" data-mobile-nav-item>Partner with us</button>
+        <button type="button" data-open="chat-panel" data-mobile-nav-item>Assistant</button>
+        <button type="button" id="account-nav-btn-mobile" data-open="account-panel" data-mobile-nav-item>Sign in</button>
+      </nav>
     </header>
 
     <!--
@@ -366,15 +380,6 @@
 
       <div class="footer-bottom">
         <p class="footer-copy">&copy; <span id="footer-year"></span> HindCare MedTech. Demo prototype — not a live emergency service.</p>
-        <label class="role-switcher">
-          <span>Team access (not a login)</span>
-          <select id="demo-role">
-            <option value="">Patient view</option>
-            <option value="hospital">Hospital admin</option>
-            <option value="fleet">Fleet owner</option>
-            <option value="admin">Admin</option>
-          </select>
-        </label>
       </div>
     </footer>
 
@@ -566,74 +571,155 @@
     </div>
 
     <div class="overlay-backdrop hidden" id="account-panel-backdrop" data-close="account-panel">
-      <div class="modal-panel modal-panel-narrow" role="dialog" aria-modal="true" aria-labelledby="account-panel-title" id="account-panel">
+      <div class="modal-panel modal-panel-narrow account-modal" role="dialog" aria-modal="true" aria-labelledby="account-panel-title" id="account-panel">
         <button type="button" class="panel-close" data-close="account-panel" aria-label="Close account panel">✕</button>
+        <p class="eyebrow">[ MY ACCOUNT ]</p>
 
-        <div id="account-auth-view">
-          <p class="eyebrow">[ MY ACCOUNT ]</p>
-          <h2 id="account-panel-title">Sign in</h2>
-          <p class="section-sub">An account is never required to book — it just saves your details and shows your booking history for next time.</p>
-
-          <form id="account-signin-form" class="partner-form">
-            <label>
-              Phone or email
-              <input name="identifier" placeholder="+91-9876543210" required autocomplete="username">
-            </label>
-            <label>
-              Password
-              <input type="password" name="password" required autocomplete="current-password">
-            </label>
-            <button type="submit" class="cta-primary cta-block">Sign in</button>
-            <p class="form-result" id="account-signin-result" role="status"></p>
-          </form>
-          <p><button type="button" class="footer-link-button" id="show-signup-btn">New here? Create an account</button></p>
-
-          <form id="account-signup-form" class="partner-form hidden">
-            <label>
-              Full name
-              <input name="fullName" placeholder="Manish Kumar" required autocomplete="name">
-            </label>
-            <label>
-              Phone
-              <input name="phone" placeholder="+91-9876543210" required autocomplete="tel">
-            </label>
-            <label>
-              Email (optional)
-              <input type="email" name="email" placeholder="you@example.com" autocomplete="email">
-            </label>
-            <label>
-              Password
-              <input type="password" name="password" required autocomplete="new-password">
-            </label>
-            <button type="submit" class="cta-primary cta-block">Create account</button>
-            <p class="form-result" id="account-signup-result" role="status"></p>
-          </form>
-          <p class="hidden" id="show-signin-note"><button type="button" class="footer-link-button" id="show-signin-btn">Already have an account? Sign in</button></p>
+        <!-- STATE: not signed in, choose sign in or create account -->
+        <div class="account-view" id="account-view-welcome">
+          <h2 id="account-panel-title">My account</h2>
+          <p class="account-intro">You can book without an account. Sign in to view your bookings, or create an account to save your details for faster booking next time.</p>
+          <button type="button" class="cta-primary cta-block" id="go-signin-btn">Sign in</button>
+          <p class="account-switch">Don't have an account? <button type="button" class="footer-link-button" id="go-signup-btn">Create an account</button></p>
         </div>
 
-        <div class="hidden" id="account-dashboard-view">
-          <p class="eyebrow">[ MY ACCOUNT ]</p>
-          <h2>Hi, <span id="account-name">there</span></h2>
-          <p class="section-sub" id="account-phone"></p>
+        <!-- STATE: sign in -->
+        <div class="account-view hidden" id="account-view-signin">
+          <h2>Welcome back</h2>
+          <p class="account-intro">Sign in to view your bookings and saved details.</p>
 
-          <div class="partner-screen" style="margin-top:18px;">
-            <h3>Account details</h3>
-            <form id="account-edit-form" class="partner-form">
-              <label>
-                Full name
-                <input name="fullName" id="account-fullname-input" required>
+          <form id="account-signin-form" class="partner-form" novalidate>
+            <label class="field">
+              Phone number or email
+              <input id="signin-identifier" name="identifier" type="text" autocomplete="username" required aria-describedby="signin-identifier-error">
+              <span class="field-error" id="signin-identifier-error"></span>
+            </label>
+            <label class="field">
+              Password
+              <div class="password-input">
+                <input id="signin-password" name="password" type="password" autocomplete="current-password" required aria-describedby="signin-password-error">
+                <button type="button" class="password-toggle" data-target="signin-password" aria-label="Show password">Show</button>
+              </div>
+              <span class="field-error" id="signin-password-error"></span>
+            </label>
+            <p class="form-error" id="signin-form-error" role="alert"></p>
+            <button type="submit" class="cta-primary cta-block" id="signin-submit-btn">Sign in</button>
+          </form>
+
+          <button type="button" class="footer-link-button account-forgot-link" id="forgot-password-btn">Forgot password?</button>
+
+          <div class="account-forgot-panel hidden" id="forgot-password-panel">
+            <div id="forgot-step-request">
+              <p class="account-intro">Enter your phone or email and we'll send reset instructions.</p>
+              <label class="field">
+                Phone number or email
+                <input id="forgot-identifier" type="text" autocomplete="username" aria-describedby="forgot-identifier-error">
+                <span class="field-error" id="forgot-identifier-error"></span>
               </label>
-              <button type="submit" class="cta-secondary">Save</button>
-              <p class="form-result" id="account-edit-result" role="status"></p>
+              <button type="button" class="cta-secondary cta-block" id="forgot-request-btn">Send reset instructions</button>
+              <p class="form-result" id="forgot-request-result" role="status"></p>
+            </div>
+            <div class="hidden" id="forgot-step-reset">
+              <label class="field">
+                Reset code
+                <input id="forgot-token" type="text">
+              </label>
+              <label class="field">
+                New password
+                <div class="password-input">
+                  <input id="forgot-new-password" type="password" autocomplete="new-password" aria-describedby="forgot-new-password-error">
+                  <button type="button" class="password-toggle" data-target="forgot-new-password" aria-label="Show password">Show</button>
+                </div>
+                <span class="field-error" id="forgot-new-password-error"></span>
+              </label>
+              <button type="button" class="cta-primary cta-block" id="forgot-reset-btn">Reset password</button>
+              <p class="form-result" id="forgot-reset-result" role="status"></p>
+            </div>
+          </div>
+
+          <p class="account-switch">Don't have an account? <button type="button" class="footer-link-button" id="signin-to-signup-btn">Create an account</button></p>
+          <button type="button" class="account-back-btn" id="signin-back-btn">← Back</button>
+        </div>
+
+        <!-- STATE: create account -->
+        <div class="account-view hidden" id="account-view-signup">
+          <h2>Create your account</h2>
+          <p class="account-intro">Save your details and easily access your bookings next time.</p>
+
+          <form id="account-signup-form" class="partner-form" novalidate>
+            <label class="field">
+              Full name
+              <input id="signup-fullname" name="fullName" type="text" autocomplete="name" required aria-describedby="signup-fullname-error">
+              <span class="field-error" id="signup-fullname-error"></span>
+            </label>
+            <label class="field">
+              Phone number
+              <input id="signup-phone" name="phone" type="tel" autocomplete="tel" required aria-describedby="signup-phone-error">
+              <span class="field-error" id="signup-phone-error"></span>
+            </label>
+            <label class="field">
+              Email <span class="field-optional">Optional</span>
+              <input id="signup-email" name="email" type="email" autocomplete="email" aria-describedby="signup-email-error">
+              <span class="field-error" id="signup-email-error"></span>
+            </label>
+            <label class="field">
+              Password
+              <div class="password-input">
+                <input id="signup-password" name="password" type="password" autocomplete="new-password" required aria-describedby="signup-password-error">
+                <button type="button" class="password-toggle" data-target="signup-password" aria-label="Show password">Show</button>
+              </div>
+              <span class="field-error" id="signup-password-error"></span>
+            </label>
+            <p class="form-error" id="signup-form-error" role="alert"></p>
+            <button type="submit" class="cta-primary cta-block" id="signup-submit-btn">Create account</button>
+          </form>
+
+          <p class="account-switch">Already have an account? <button type="button" class="footer-link-button" id="signup-to-signin-btn">Sign in</button></p>
+          <button type="button" class="account-back-btn" id="signup-back-btn">← Back</button>
+        </div>
+
+        <!-- STATE: signed in dashboard -->
+        <div class="account-view hidden" id="account-view-dashboard">
+          <h2>Hi, <span id="account-dashboard-name">there</span> 👋</h2>
+
+          <div class="account-section">
+            <h3>Account details</h3>
+
+            <dl class="account-detail-list" id="account-details-view">
+              <div class="account-detail-row"><dt>Full name</dt><dd id="detail-fullname">—</dd></div>
+              <div class="account-detail-row"><dt>Phone</dt><dd id="detail-phone">—</dd></div>
+              <div class="account-detail-row"><dt>Email</dt><dd id="detail-email">—</dd></div>
+            </dl>
+            <button type="button" class="cta-secondary" id="edit-details-btn">Edit details</button>
+
+            <form class="partner-form hidden" id="account-details-edit" novalidate>
+              <label class="field">
+                Full name
+                <input id="edit-fullname" name="fullName" type="text" autocomplete="name" required aria-describedby="edit-fullname-error">
+                <span class="field-error" id="edit-fullname-error"></span>
+              </label>
+              <label class="field">
+                Phone <span class="field-optional">Can't be changed here</span>
+                <input id="edit-phone" type="text" disabled>
+              </label>
+              <label class="field">
+                Email <span class="field-optional">Can't be changed here</span>
+                <input id="edit-email" type="text" disabled>
+              </label>
+              <p class="form-error" id="edit-form-error" role="alert"></p>
+              <div class="account-edit-actions">
+                <button type="submit" class="cta-primary" id="save-details-btn">Save changes</button>
+                <button type="button" class="cta-secondary" id="cancel-edit-btn">Cancel</button>
+              </div>
             </form>
           </div>
 
-          <div class="partner-screen">
+          <div class="account-section">
             <h3>My bookings</h3>
-            <div class="list" id="account-bookings-list"><p class="empty-note">Loading…</p></div>
+            <div id="account-bookings-list"></div>
           </div>
 
-          <button type="button" class="ghost-button danger" id="account-signout-btn" style="margin-top:20px;">Sign out</button>
+          <button type="button" class="account-signout-btn" id="account-signout-btn">Sign out</button>
         </div>
       </div>
     </div>

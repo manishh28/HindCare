@@ -361,7 +361,15 @@ function sanitizeUser(user) {
   };
 }
 
-const seeded = seedDemoUsers();
+let seeded = Promise.resolve();
+if (process.env.NODE_ENV === "production") {
+  console.warn(
+    "[HindCare] Skipping demo account seeding — NODE_ENV=production. " +
+    "Provision real staff accounts through your own admin process."
+  );
+} else {
+  seeded = seedDemoUsers();
+}
 
 module.exports = {
   store,

@@ -1,6 +1,25 @@
 const crypto = require("crypto");
 
-const JWT_SECRET = process.env.JWT_SECRET || "hindcare-dev-secret-change-in-production";
+function resolveJwtSecret() {
+  if (process.env.JWT_SECRET) return process.env.JWT_SECRET;
+
+  if (process.env.NODE_ENV === "production") {
+    throw new Error(
+      "JWT_SECRET is not set. Refusing to start in production without a real signing secret. " +
+      "Generate one (e.g. `node -e \"console.log(require('crypto').randomBytes(48).toString('hex'))\"`) and set it in your environment."
+    );
+  }
+
+  const devSecret = crypto.randomBytes(32).toString("hex");
+  console.warn(
+    "[HindCare] WARNING: JWT_SECRET is not set. Using a random secret generated for this run only.\n" +
+    "           Every existing token will stop working the next time the server restarts.\n" +
+    "           Set JWT_SECRET in your .env for a stable secret across restarts."
+  );
+  return devSecret;
+}
+
+const JWT_SECRET = resolveJwtSecret();
 const JWT_ISSUER = "hindcare-auth";
 const ACCESS_TOKEN_TTL_SEC = Number(process.env.ACCESS_TOKEN_TTL_SEC || 900);
 const REFRESH_TOKEN_TTL_SEC = Number(process.env.REFRESH_TOKEN_TTL_SEC || 604800);

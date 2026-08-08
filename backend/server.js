@@ -1,10 +1,55 @@
-const http = require("http");
 const fs = require("fs");
 const path = require("path");
+
+// Minimal .env loader (kept dependency-free, matching the rest of this
+// project). Reads KEY=VALUE lines from a .env file in the project root, if
+// one exists, without overwriting any variable already set in the real
+// environment (so `set JWT_SECRET=... && node server.js` style overrides
+// still win). Must run before anything below is required, since crypto.js
+// reads process.env.JWT_SECRET the moment it's loaded.
+//
+// Handles UTF-8, UTF-8-with-BOM, and UTF-16 (LE/BE, with or without BOM) —
+// PowerShell's `>` / `Out-File` redirection defaults to UTF-16 on Windows,
+// which would otherwise silently produce an unparseable file.
+(function loadEnvFile() {
+  const envPath = path.join(__dirname, "..", ".env");
+  if (!fs.existsSync(envPath)) return;
+
+  const buf = fs.readFileSync(envPath);
+  let text;
+  if (buf.length >= 2 && buf[0] === 0xff && buf[1] === 0xfe) {
+    text = buf.slice(2).toString("utf16le");
+  } else if (buf.length >= 2 && buf[0] === 0xfe && buf[1] === 0xff) {
+    text = buf.slice(2).swap16().toString("utf16le"); // UTF-16BE -> swap to LE
+  } else if (buf.length >= 3 && buf[0] === 0xef && buf[1] === 0xbb && buf[2] === 0xbf) {
+    text = buf.slice(3).toString("utf8");
+  } else {
+    // No BOM. If it looks like UTF-16 anyway (lots of null bytes — common
+    // with PowerShell's default redirect encoding), decode as utf16le.
+    const nullRatio = buf.slice(0, 200).filter(b => b === 0).length / Math.min(buf.length, 200);
+    text = nullRatio > 0.3 ? buf.toString("utf16le") : buf.toString("utf8");
+  }
+
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+    const eqIndex = line.indexOf("=");
+    if (eqIndex === -1) continue;
+    const key = line.slice(0, eqIndex).trim();
+    let value = line.slice(eqIndex + 1).trim();
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    if (key && !(key in process.env)) process.env[key] = value;
+  }
+})();
+
+const http = require("http");
 const { handleMessage, emptySession } = require("../chatbot/chatbot");
 const { handleAuthRoutes } = require("./auth/routes");
 const { handleProfileRoutes } = require("./profile/routes");
-const { authenticate } = require("./auth/middleware");
+const { authenticate, requireAuth } = require("./auth/middleware");
+const { ROLE_PERMISSIONS } = require("./auth/store");
 
 const PORT = Number(process.env.PORT || 4173);
 const HOST = process.env.HOST || "127.0.0.1";
@@ -113,21 +158,24 @@ function nextId(items) {
   return items.length ? Math.max(...items.map(item => item.id)) + 1 : 1;
 }
 
-function requireDemoRole(req, res, allowedRoles) {
-  const role = String(req.headers["x-demo-role"] || "").toLowerCase();
-  if (!allowedRoles.includes(role)) {
+// Real, server-verified authorization — checks an actual signed-in staff
+// user's permissions (from the same JWT auth used by /auth/ and /profile/),
+// not a client-supplied header. The X-Demo-Role header this app used to
+// accept for these checks was never real authorization — anyone could set
+// it to anything — so it's been fully retired from every endpoint that
+// changes data or returns non-public information.
+function requirePermission(req, res, permission) {
+  const auth = requireAuth(req, res, sendJson);
+  if (!auth) return null;
+  const perms = ROLE_PERMISSIONS[auth.user.roleSlug] || [];
+  if (!perms.includes(permission)) {
     sendJson(req, res, 403, {
-      error: `This demo action needs an X-Demo-Role header set to one of: ${allowedRoles.join(", ")}.`,
-      note: "This is a prototype role check for demo purposes, not real authentication."
+      error: "You don't have permission to perform this action.",
+      code: "FORBIDDEN"
     });
-    return false;
+    return null;
   }
-  return true;
-}
-
-function hasDemoRole(req, allowedRoles) {
-  const role = String(req.headers["x-demo-role"] || "").toLowerCase();
-  return allowedRoles.includes(role);
+  return auth;
 }
 
 function lastDigits(value, n = 10) {
@@ -360,7 +408,7 @@ async function handleApi(req, res) {
   }
   const hospitalMatch = url.pathname.match(/^\/api\/hospitals\/(\d+)$/);
   if (req.method === "PATCH" && hospitalMatch) {
-    if (!requireDemoRole(req, res, ["admin"])) return;
+    if (!requirePermission(req, res, "hospitals.manage")) return;
     const hospital = db.hospitals.find(h => h.id === Number(hospitalMatch[1]));
     if (!hospital) { sendJson(req, res, 404, { error: "Hospital not found" }); return; }
     const body = await parseBody(req);
@@ -372,8 +420,9 @@ async function handleApi(req, res) {
 
   // ----------- Ambulances -----------
   if (req.method === "GET" && url.pathname === "/api/ambulances") {
-    const canSee = hasDemoRole(req, ["fleet", "admin"]);
-    const ambulances = canSee ? db.ambulances : db.ambulances.map(({ driverName, phone, email, ...rest }) => rest);
+    const auth = authenticate(req);
+    const isStaff = auth && auth.user.roleSlug !== "customer";
+    const ambulances = isStaff ? db.ambulances : db.ambulances.map(({ driverName, phone, email, ...rest }) => rest);
     sendJson(req, res, 200, ambulances);
     return;
   }
@@ -389,7 +438,10 @@ async function handleApi(req, res) {
       driverName: String(body.driverName).trim(), phone: String(body.phone).trim(), email: String(body.email).trim().toLowerCase(),
       currentLat: body.currentLat !== undefined ? Number(body.currentLat) : null,
       currentLng: body.currentLng !== undefined ? Number(body.currentLng) : null,
-      status: "available"
+      // Starts offline, not available: a self-registered ambulance must be
+      // verified and activated by staff before it can be matched to a real
+      // patient booking (SEC-009). Mirrors the hospital "pending" pattern.
+      status: "offline"
     };
     db.ambulances.push(ambulance);
     sendJson(req, res, 201, ambulance);
@@ -397,7 +449,7 @@ async function handleApi(req, res) {
   }
   const ambulanceMatch = url.pathname.match(/^\/api\/ambulances\/(\d+)$/);
   if (req.method === "PATCH" && ambulanceMatch) {
-    if (!requireDemoRole(req, res, ["fleet", "admin"])) return;
+    if (!requirePermission(req, res, "ambulances.manage")) return;
     const ambulance = db.ambulances.find(a => a.id === Number(ambulanceMatch[1]));
     if (!ambulance) { sendJson(req, res, 404, { error: "Ambulance not found" }); return; }
     const body = await parseBody(req);
@@ -409,9 +461,13 @@ async function handleApi(req, res) {
 
   // ----------- Bookings -----------
   if (req.method === "GET" && url.pathname === "/api/bookings") {
-    const canSee = hasDemoRole(req, ["fleet", "admin", "hospital"]);
-    const bookings = canSee ? db.bookings : db.bookings.map(({ patientName, phone, ...rest }) => rest);
-    sendJson(req, res, 200, bookings);
+    const auth = requireAuth(req, res, sendJson);
+    if (!auth) return;
+    if (auth.user.roleSlug === "customer") {
+      sendJson(req, res, 403, { error: "Use /api/my-bookings to view your own bookings.", code: "FORBIDDEN" });
+      return;
+    }
+    sendJson(req, res, 200, db.bookings);
     return;
   }
   if (req.method === "GET" && url.pathname === "/api/bookings/lookup") {
@@ -449,11 +505,24 @@ async function handleApi(req, res) {
   }
   const bookingMatch = url.pathname.match(/^\/api\/bookings\/(\d+)$/);
   if (req.method === "PATCH" && bookingMatch) {
+    const auth = requireAuth(req, res, sendJson);
+    if (!auth) return;
+
     const booking = db.bookings.find(b => b.id === Number(bookingMatch[1]));
     if (!booking) { sendJson(req, res, 404, { error: "Booking not found" }); return; }
+
     const body = await parseBody(req);
     const nextStatus = body.status;
     if (!BOOKING_STATUSES.includes(nextStatus)) { sendJson(req, res, 400, { error: `status must be one of: ${BOOKING_STATUSES.join(", ")}` }); return; }
+
+    const perms = ROLE_PERMISSIONS[auth.user.roleSlug] || [];
+    const isStaffManager = perms.includes("bookings.update");
+    const isOwnerCancelling = auth.user.roleSlug === "customer" && booking.customerId === auth.user.id && nextStatus === "cancelled";
+    if (!isStaffManager && !isOwnerCancelling) {
+      sendJson(req, res, 403, { error: "You don't have permission to update this booking.", code: "FORBIDDEN" });
+      return;
+    }
+
     if (!BOOKING_TRANSITIONS[booking.status].includes(nextStatus)) {
       sendJson(req, res, 409, { error: `Cannot move a booking from "${booking.status}" to "${nextStatus}".`, allowedNext: BOOKING_TRANSITIONS[booking.status] });
       return;
