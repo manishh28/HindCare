@@ -142,6 +142,100 @@ a {
   color: var(--siren);
 }
 
+/* ---- mobile nav toggle + dropdown menu (hidden on desktop) ---- */
+
+.mobile-nav-toggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  font-size: 22px;
+  line-height: 1;
+  color: var(--ink);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.mobile-nav-toggle:hover {
+  border-color: var(--line-strong);
+}
+
+.mobile-nav-toggle:focus-visible {
+  outline: 2px solid var(--siren);
+  outline-offset: 2px;
+}
+
+.mobile-nav-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px clamp(18px, 5vw, 64px);
+  background: #fff;
+  border-bottom: 1px solid var(--line);
+  box-shadow: 0 16px 30px rgba(17, 20, 24, 0.08);
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+  transition: max-height 0.28s ease, opacity 0.2s ease;
+}
+
+.mobile-nav-menu.open {
+  max-height: 480px;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.mobile-nav-menu a,
+.mobile-nav-menu button {
+  display: block;
+  width: 100%;
+  min-height: 50px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 500;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mobile-nav-menu button:hover,
+.mobile-nav-menu button:focus-visible,
+.mobile-nav-menu a:not(.mobile-nav-primary):hover,
+.mobile-nav-menu a:not(.mobile-nav-primary):focus-visible {
+  background: var(--surface-soft);
+}
+
+.mobile-nav-primary {
+  background: var(--siren) !important;
+  color: #fff !important;
+  font-weight: 700 !important;
+  font-size: 16px !important;
+  box-shadow: 0 10px 20px rgba(225, 29, 46, 0.25);
+  margin-bottom: 6px;
+}
+
+.mobile-nav-primary:hover {
+  background: var(--siren-dark) !important;
+}
+
 /* ---- eyebrows / section labels ---- */
 .eyebrow {
   font-family: var(--font-mono);
@@ -780,6 +874,242 @@ select:focus {
   margin-top: 18px;
   display: grid;
   gap: 12px;
+}
+
+/* ---- my account (redesigned) ---- */
+
+.account-modal h2 {
+  font-size: 22px;
+  margin-bottom: 8px;
+}
+
+.account-view.hidden {
+  display: none;
+}
+
+.account-intro {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+  margin-bottom: 20px;
+}
+
+.account-switch {
+  margin-top: 16px;
+  font-size: 14px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.account-back-btn {
+  display: block;
+  margin: 20px auto 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.account-back-btn:hover {
+  color: var(--ink);
+}
+
+.field-optional {
+  font-weight: 400;
+  color: var(--muted);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.field-error {
+  display: block;
+  min-height: 16px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--siren-dark);
+}
+
+.field[aria-invalid="true"] input,
+.account-form input[aria-invalid="true"] {
+  border-color: var(--siren);
+}
+
+.form-error {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--siren-dark);
+  background: var(--siren-tint);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin: 0;
+}
+
+.form-error:empty {
+  display: none;
+}
+
+.password-input {
+  position: relative;
+  display: flex;
+}
+
+.password-input input {
+  padding-right: 64px;
+}
+
+.password-toggle {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  min-height: 32px;
+  padding: 0 10px;
+  border: 0;
+  background: none;
+  color: var(--teal-dark);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.password-toggle:hover {
+  text-decoration: underline;
+}
+
+.account-forgot-link {
+  display: block;
+  margin: 14px 0 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--teal-dark);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.account-forgot-link:hover {
+  text-decoration: underline;
+}
+
+.account-forgot-panel {
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-soft);
+}
+
+.account-forgot-panel.hidden {
+  display: none;
+}
+
+.account-forgot-panel .field {
+  margin-bottom: 12px;
+}
+
+.account-section {
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 1px solid var(--line);
+}
+
+.account-section h3 {
+  font-size: 17px;
+  margin-bottom: 14px;
+}
+
+.account-detail-list {
+  display: grid;
+  gap: 12px;
+  margin: 0 0 16px;
+}
+
+.account-detail-row {
+  display: grid;
+  gap: 2px;
+}
+
+.account-detail-row dt {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.account-detail-row dd {
+  margin: 0;
+  font-size: 15px;
+  color: var(--ink);
+}
+
+.account-edit-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.account-signout-btn {
+  display: block;
+  width: 100%;
+  margin-top: 28px;
+  min-height: 46px;
+  border: 1.5px solid var(--siren);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--siren-dark);
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.account-signout-btn:hover {
+  background: var(--siren-tint);
+}
+
+.cta-primary:disabled,
+.cta-secondary:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+/* booking cards inside the account dashboard */
+.booking-card-details {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0 12px;
+}
+
+.booking-card-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.booking-card-row span:first-child {
+  color: var(--muted);
+}
+
+.booking-skeleton {
+  height: 84px;
+  border-radius: 10px;
+  background: linear-gradient(100deg, var(--surface-soft) 30%, var(--line) 50%, var(--surface-soft) 70%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.3s ease-in-out infinite;
+  margin-bottom: 10px;
+}
+
+@keyframes skeleton-shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .booking-skeleton { animation: none; }
 }
 
 /* ---- emergency call strip ---- */
@@ -1447,8 +1777,11 @@ select:focus {
   }
 
   .topbar-nav {
-    gap: 16px;
-    font-size: 13px;
+    display: none;
+  }
+
+  .mobile-nav-toggle {
+    display: flex;
   }
 
   .footer-inner {

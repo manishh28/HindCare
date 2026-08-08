@@ -103,7 +103,12 @@ function toggleSidebar() {
   document.getElementById("sidebar-overlay").classList.toggle("open");
 }
 
-function logout() {
+async function logout() {
+  try {
+    await profileApi("/api/auth/logout", { method: "POST" });
+  } catch {
+    // Best-effort — still clear the local session below even if this fails.
+  }
   clearProfileAuth();
   window.location.href = "/auth/";
 }

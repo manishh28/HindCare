@@ -9,7 +9,8 @@ const {
   sanitizeUser,
   ROLE_PERMISSIONS,
   isAccountLocked,
-  recordAudit
+  recordAudit,
+  store
 } = require("./store");
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -37,6 +38,14 @@ function authenticate(req) {
     const user = findUserById(payload.sub);
     if (!user || user.status === "deleted" || user.status === "suspended") return null;
     if (isAccountLocked(user)) return null;
+
+    if (payload.sid) {
+      const session = store.sessions.find(s => s.id === payload.sid);
+      if (!session || session.revokedAt || new Date(session.expiresAt) <= new Date()) {
+        return null;
+      }
+    }
+
     return { user, payload, sessionId: payload.sid };
   } catch {
     return null;

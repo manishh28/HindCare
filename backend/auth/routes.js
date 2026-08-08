@@ -58,6 +58,20 @@ function checkRateLimit(key) {
   return entry.count <= RATE_LIMIT_MAX;
 }
 
+// Delivers a one-time code (MFA, phone/email verification, password reset)
+// out-of-band — i.e. NEVER in the HTTP response. In development this logs to
+// the server console, which only someone with actual access to the running
+// server can read. Before any real deployment, replace this with a genuine
+// email/SMS provider call — do not reintroduce the code into an API response.
+function deliverSecurityCode(destination, purpose, code) {
+  if (process.env.NODE_ENV === "production") {
+    // TODO: wire up a real email/SMS provider here before production use.
+    console.log(`[HindCare] Security code generated for ${purpose} (delivery channel not yet configured).`);
+    return;
+  }
+  console.log(`[HindCare][dev-only, never sent over the network] ${purpose} code for ${destination}: ${code}`);
+}
+
 async function handleAuthRoutes(req, res, url, parseBody, sendJson) {
   const meta = getRequestMeta(req);
   const ipKey = meta.ip || "unknown";
@@ -234,11 +248,10 @@ async function handleAuthRoutes(req, res, url, parseBody, sendJson) {
 
     if ((role.mfaRequired || user.mfaEnabled) && !body.mfaCode) {
       const mfaOtp = createOtp({ userId: user.id, channel: "email", destination: user.email, purpose: "mfa" });
+      deliverSecurityCode(user.email, "MFA", mfaOtp._plainOtp);
       sendJson(req, res, 200, {
         requiresMfa: true,
-        message: "Multi-factor authentication required",
-        demoOtp: mfaOtp._plainOtp,
-        note: "Demo only — MFA OTP returned for local testing"
+        message: "Multi-factor authentication required. Check your email for the verification code."
       });
       return true;
     }
@@ -305,13 +318,12 @@ async function handleAuthRoutes(req, res, url, parseBody, sendJson) {
 
     const user = channel === "email" ? findUserByEmail(destination) : findUserByPhone(destination);
     const otp = createOtp({ userId: user?.id, channel, destination, purpose });
+    deliverSecurityCode(destination, purpose, otp._plainOtp);
 
     sendJson(req, res, 200, {
       message: `OTP sent to ${channel === "phone" ? "phone" : "email"}`,
       expiresIn: 300,
-      resendAvailableIn: 30,
-      demoOtp: otp._plainOtp,
-      note: "Demo only — OTP returned for local testing"
+      resendAvailableIn: 30
     });
     return true;
   }
@@ -357,11 +369,10 @@ async function handleAuthRoutes(req, res, url, parseBody, sendJson) {
 
     if (user) {
       const reset = createResetToken(user.id);
+      deliverSecurityCode(identifier, "password reset", reset._plainToken);
       auditAction(req, user.id, "password.reset_requested", "user", user.id);
       sendJson(req, res, 200, {
-        message: "If an account exists, reset instructions have been sent",
-        demoResetToken: reset._plainToken,
-        note: "Demo only — reset token returned for local testing"
+        message: "If an account exists, reset instructions have been sent"
       });
     } else {
       sendJson(req, res, 200, { message: "If an account exists, reset instructions have been sent" });

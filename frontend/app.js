@@ -2,7 +2,6 @@ const state = {
   hospitals: [],
   ambulances: [],
   bookings: [],
-  role: "",
   destinationManuallySet: false
 };
 
@@ -29,14 +28,19 @@ function guessCityFromPickup(text) {
   return null;
 }
 
+// Every value below can come from a public, unauthenticated submission
+// (hospital/ambulance onboarding, the booking form). Anything rendered via
+// innerHTML must be escaped — this is the fix for the stored-XSS finding
+// from the security audit.
+function escapeHtml(str) {
+  return String(str ?? "").replace(/[&<>"']/g, m => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[m]));
+}
+
 async function api(path, options = {}) {
   const headers = {
     "Content-Type": "application/json",
     ...(options.headers || {})
   };
-  if (state.role) {
-    headers["X-Demo-Role"] = state.role;
-  }
 
   const response = await fetch(path, { ...options, headers });
   const data = await response.json();
@@ -56,7 +60,6 @@ function formToObject(form) {
 
 function renderHospitals() {
   const list = document.getElementById("hospital-list");
-  const isAdmin = state.role === "admin";
 
   if (!state.hospitals.length) {
     list.innerHTML = `<p class="empty-note">No hospitals yet.</p>`;
@@ -66,38 +69,14 @@ function renderHospitals() {
   list.innerHTML = state.hospitals.map(hospital => `
     <article class="item" data-hospital-id="${hospital.id}">
       <div class="item-header">
-        <strong>${hospital.name}</strong>
-        <span class="badge ${hospital.status}">${hospital.status}</span>
+        <strong>${escapeHtml(hospital.name)}</strong>
+        <span class="badge ${escapeHtml(hospital.status)}">${escapeHtml(hospital.status)}</span>
       </div>
-      <p>${hospital.address}</p>
-      <p class="item-meta">${hospital.phone}${hospital.email ? ` — ${hospital.email}` : ""}</p>
-      <p class="availability">${hospital.availableBeds}/${hospital.totalBeds} beds available</p>
-      ${isAdmin && hospital.status === "pending" ? `
-        <div class="row-actions">
-          <button type="button" class="ghost-button" data-hospital-action="approved">Approve</button>
-          <button type="button" class="ghost-button danger" data-hospital-action="rejected">Reject</button>
-        </div>
-      ` : ""}
+      <p>${escapeHtml(hospital.address)}</p>
+      <p class="item-meta">${escapeHtml(hospital.phone)}${hospital.email ? ` — ${escapeHtml(hospital.email)}` : ""}</p>
+      <p class="availability">${Number(hospital.availableBeds) || 0}/${Number(hospital.totalBeds) || 0} beds available</p>
     </article>
   `).join("");
-
-  if (isAdmin) {
-    list.querySelectorAll("[data-hospital-action]").forEach(button => {
-      button.addEventListener("click", async () => {
-        const card = button.closest("[data-hospital-id]");
-        const id = card.getAttribute("data-hospital-id");
-        try {
-          await api(`/api/hospitals/${id}`, {
-            method: "PATCH",
-            body: JSON.stringify({ status: button.getAttribute("data-hospital-action") })
-          });
-          await refreshHospitals();
-        } catch (error) {
-          window.alert(error.message);
-        }
-      });
-    });
-  }
 }
 
 function populateDestinationSelect(preferredCity) {
@@ -113,7 +92,7 @@ function populateDestinationSelect(preferredCity) {
   }
 
   select.innerHTML = approved.map(hospital =>
-    `<option value="${hospital.id}" data-city="${hospital.city}">${hospital.name} — ${hospital.city}</option>`
+    `<option value="${hospital.id}" data-city="${escapeHtml(hospital.city)}">${escapeHtml(hospital.name)} — ${escapeHtml(hospital.city)}</option>`
   ).join("");
 
   if (!state.destinationManuallySet && preferredCity) {
@@ -151,12 +130,6 @@ document.getElementById("destination-select").addEventListener("change", () => {
 
 function renderAmbulances() {
   const list = document.getElementById("ambulance-list");
-  const canManage = state.role === "fleet" || state.role === "admin";
-  // Driver name and personal phone are only useful to roles that actually
-  // coordinate dispatch — showing them to every site visitor would let
-  // anyone call a driver directly, bypassing dispatch entirely.
-  const canSeeDriverInfo = state.role === "fleet" || state.role === "admin";
-  const statuses = ["available", "busy", "maintenance", "offline"];
 
   if (!state.ambulances.length) {
     list.innerHTML = `<p class="empty-note">No ambulances yet.</p>`;
@@ -166,39 +139,12 @@ function renderAmbulances() {
   list.innerHTML = state.ambulances.map(ambulance => `
     <article class="item" data-ambulance-id="${ambulance.id}">
       <div class="item-header">
-        <strong>${ambulance.registrationNumber}</strong>
-        <span class="badge ${ambulance.status}">${ambulance.status}</span>
+        <strong>${escapeHtml(ambulance.registrationNumber)}</strong>
+        <span class="badge ${escapeHtml(ambulance.status)}">${escapeHtml(ambulance.status)}</span>
       </div>
-      <p>${ambulance.type} ambulance</p>
-      ${canSeeDriverInfo ? `<p class="item-meta">${ambulance.driverName} — ${ambulance.phone}${ambulance.email ? ` — ${ambulance.email}` : ""}</p>` : ""}
-      ${canManage ? `
-        <label class="inline-select">
-          Update status
-          <select data-ambulance-status>
-            ${statuses.map(status => `<option value="${status}" ${status === ambulance.status ? "selected" : ""}>${status}</option>`).join("")}
-          </select>
-        </label>
-      ` : ""}
+      <p>${escapeHtml(ambulance.type)} ambulance</p>
     </article>
   `).join("");
-
-  if (canManage) {
-    list.querySelectorAll("[data-ambulance-status]").forEach(select => {
-      select.addEventListener("change", async () => {
-        const card = select.closest("[data-ambulance-id]");
-        const id = card.getAttribute("data-ambulance-id");
-        try {
-          await api(`/api/ambulances/${id}`, {
-            method: "PATCH",
-            body: JSON.stringify({ status: select.value })
-          });
-          await refreshAmbulances();
-        } catch (error) {
-          window.alert(error.message);
-        }
-      });
-    });
-  }
 }
 
 // ---------------------------------------------------------------------
@@ -229,11 +175,6 @@ function statusChip(status) {
 
 function renderBookings() {
   const list = document.getElementById("booking-list");
-  const canManage = state.role === "fleet" || state.role === "admin";
-  // Patient name and phone are personal information — only show them to
-  // roles that legitimately need them for dispatch, never to any visitor
-  // who happens to load the public network view.
-  const canSeePatientInfo = state.role === "fleet" || state.role === "admin" || state.role === "hospital";
 
   if (!state.bookings.length) {
     list.innerHTML = `<p class="empty-note">No bookings yet.</p>`;
@@ -242,44 +183,20 @@ function renderBookings() {
 
   list.innerHTML = [...state.bookings].reverse().map(booking => {
     const ambulance = state.ambulances.find(item => item.id === booking.ambulanceId);
-    const nextSteps = BOOKING_NEXT_STEPS[booking.status] || [];
     return `
     <article class="item" data-booking-id="${booking.id}">
       <div class="item-header">
-        <strong>#${booking.id}${canSeePatientInfo ? ` — ${booking.patientName}` : ""}</strong>
+        <strong>#${booking.id}</strong>
         ${statusChip(booking.status)}
       </div>
-      <p>${booking.pickup} → ${booking.destination}</p>
+      <p>${escapeHtml(booking.pickup)} → ${escapeHtml(booking.destination)}</p>
       <p class="item-meta">
-        ${ambulance ? `${ambulance.registrationNumber} (${ambulance.driverName})` : "No ambulance assigned yet"}
-        ${booking.dispatchDistanceKm != null ? ` · ~${booking.dispatchDistanceKm} km` : ""}
+        ${ambulance ? `${escapeHtml(ambulance.registrationNumber)}` : "No ambulance assigned yet"}
+        ${booking.dispatchDistanceKm != null ? ` · ~${Number(booking.dispatchDistanceKm)} km` : ""}
       </p>
-      ${canManage && nextSteps.length ? `
-        <div class="row-actions">
-          ${nextSteps.map(([status, label]) => `<button type="button" class="ghost-button ${status === "cancelled" ? "danger" : ""}" data-booking-status="${status}">${label}</button>`).join("")}
-        </div>
-      ` : ""}
     </article>
   `;
   }).join("");
-
-  if (canManage) {
-    list.querySelectorAll("[data-booking-status]").forEach(button => {
-      button.addEventListener("click", async () => {
-        const card = button.closest("[data-booking-id]");
-        const id = card.getAttribute("data-booking-id");
-        try {
-          await api(`/api/bookings/${id}`, {
-            method: "PATCH",
-            body: JSON.stringify({ status: button.getAttribute("data-booking-status") })
-          });
-          await Promise.all([refreshBookings(), refreshAmbulances()]);
-        } catch (error) {
-          window.alert(error.message);
-        }
-      });
-    });
-  }
 }
 
 // ---------------------------------------------------------------------
@@ -319,7 +236,7 @@ async function refreshHospitals() {
     populateDestinationSelect(guessCityFromPickup(document.getElementById("pickup-input").value));
     renderHeroStats();
   } catch (error) {
-    document.getElementById("hospital-list").innerHTML = `<p class="load-error">${error.message}</p>`;
+    document.getElementById("hospital-list").innerHTML = `<p class="load-error">${escapeHtml(error.message)}</p>`;
   }
 }
 
@@ -330,7 +247,7 @@ async function refreshAmbulances() {
     renderBookings();
     renderHeroStats();
   } catch (error) {
-    document.getElementById("ambulance-list").innerHTML = `<p class="load-error">${error.message}</p>`;
+    document.getElementById("ambulance-list").innerHTML = `<p class="load-error">${escapeHtml(error.message)}</p>`;
   }
 }
 
@@ -340,7 +257,10 @@ async function refreshBookings() {
     renderBookings();
     renderHeroStats();
   } catch (error) {
-    document.getElementById("booking-list").innerHTML = `<p class="load-error">${error.message}</p>`;
+    // Live booking activity is staff-only now (see the security fixes) —
+    // that's an expected, honest state for a public visitor, not an error.
+    document.getElementById("booking-list").innerHTML =
+      `<p class="empty-note">Live booking activity is visible to signed-in staff. Track your own booking above with your booking ID and phone number.</p>`;
   }
 }
 
@@ -407,18 +327,41 @@ document.addEventListener("keydown", event => {
     closePanel("terms-panel");
     closePanel("privacy-panel");
     closePanel("account-panel");
+    closeMobileNav();
   }
 });
 
-// ---------------------------------------------------------------------
-// Role switcher (demo only — see docs/security-and-privacy.md)
-// ---------------------------------------------------------------------
+// ---- mobile hamburger menu ----
 
-document.getElementById("demo-role").addEventListener("change", event => {
-  state.role = event.target.value;
-  renderHospitals();
-  renderAmbulances();
-  renderBookings();
+const mobileNavToggle = document.getElementById("mobile-nav-toggle");
+const mobileNavMenu = document.getElementById("mobile-nav-menu");
+const mobileNavIcon = document.getElementById("mobile-nav-icon");
+
+function openMobileNav() {
+  mobileNavMenu.classList.add("open");
+  mobileNavToggle.setAttribute("aria-expanded", "true");
+  mobileNavToggle.setAttribute("aria-label", "Close menu");
+  mobileNavIcon.textContent = "✕";
+}
+
+function closeMobileNav() {
+  mobileNavMenu.classList.remove("open");
+  mobileNavToggle.setAttribute("aria-expanded", "false");
+  mobileNavToggle.setAttribute("aria-label", "Open menu");
+  mobileNavIcon.textContent = "☰";
+}
+
+mobileNavToggle.addEventListener("click", () => {
+  if (mobileNavMenu.classList.contains("open")) closeMobileNav();
+  else openMobileNav();
+});
+
+mobileNavMenu.querySelectorAll("[data-mobile-nav-item]").forEach(item => {
+  item.addEventListener("click", () => closeMobileNav());
+});
+
+window.addEventListener("resize", () => {
+  if (window.innerWidth > 900) closeMobileNav();
 });
 
 // ---------------------------------------------------------------------
@@ -577,20 +520,20 @@ document.getElementById("tracker-form").addEventListener("submit", async event =
 
     result.innerHTML = `
       <div class="tracker-row"><span>Status</span>${statusChip(booking.status)}</div>
-      <div class="tracker-row"><span>Destination</span><span>${booking.destination}</span></div>
+      <div class="tracker-row"><span>Destination</span><span>${escapeHtml(booking.destination)}</span></div>
       ${booking.ambulance
-        ? `<div class="tracker-row"><span>Ambulance</span><span>${booking.ambulance.registrationNumber}</span></div>
-           <div class="tracker-row"><span>Driver</span><span>${booking.ambulance.driverName}</span></div>`
+        ? `<div class="tracker-row"><span>Ambulance</span><span>${escapeHtml(booking.ambulance.registrationNumber)}</span></div>
+           <div class="tracker-row"><span>Driver</span><span>${escapeHtml(booking.ambulance.driverName)}</span></div>`
         : `<div class="tracker-row"><span>Ambulance</span><span>Not yet assigned</span></div>`}
-      ${showEta ? `<div class="tracker-row"><span>Est. arrival</span><span>~${eta} min (approx.)</span></div>` : ""}
+      ${showEta ? `<div class="tracker-row"><span>Est. arrival</span><span>~${Number(eta)} min (approx.)</span></div>` : ""}
     `;
   } catch (error) {
-    result.innerHTML = `<p>${error.message}</p>`;
+    result.innerHTML = `<p>${escapeHtml(error.message)}</p>`;
   }
 });
 
 refreshDashboard().catch(error => {
-  document.body.insertAdjacentHTML("afterbegin", `<p class="load-error">${error.message}</p>`);
+  document.body.insertAdjacentHTML("afterbegin", `<p class="load-error">${escapeHtml(error.message)}</p>`);
 });
 
 const footerYear = document.getElementById("footer-year");
@@ -604,9 +547,16 @@ if (footerYear) {
 // history of bookings tied to your account or made as a guest with the
 // same phone number. Kept in its own storage namespace (hindcare_patient_*)
 // so it never collides with the separate staff/ERP session under /auth/.
+//
+// The panel is a strict state machine — exactly one view is visible at
+// any time: welcome, signin, signup, or dashboard. Nothing about account
+// details, editing, or bookings can ever render before the user is
+// actually signed in.
 // ---------------------------------------------------------------------
 
 const PATIENT_KEY = "hindcare_patient";
+const PHONE_PATTERN = /^\+?[0-9][0-9\s-]{6,17}$/;
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const patientState = {
   accessToken: localStorage.getItem(`${PATIENT_KEY}_token`) || null,
@@ -658,7 +608,7 @@ async function patientApi(path, options = {}) {
     }
     clearPatientAuth();
     updateAccountNav();
-    throw new Error("Your session expired. Please sign in again.");
+    throw new Error("Your session has expired. Please sign in again.");
   }
 
   if (!response.ok) {
@@ -669,10 +619,109 @@ async function patientApi(path, options = {}) {
   return data;
 }
 
+// ---- friendly error copy, mapped from backend error codes ----
+function friendlyAuthError(error) {
+  const map = {
+    INVALID_CREDENTIALS: "Phone/email or password is incorrect.",
+    INVALID_ROLE: "Something went wrong. Please try again.",
+    PHONE_EXISTS: "An account with this phone number already exists. Try signing in instead.",
+    EMAIL_EXISTS: "An account with this email already exists. Try signing in instead.",
+    INVALID_PHONE: "Enter a valid phone number.",
+    INVALID_EMAIL: "Enter a valid email address.",
+    WEAK_PASSWORD: error.message || "Choose a stronger password.",
+    RATE_LIMITED: "Too many attempts. Please wait a moment and try again.",
+    ACCOUNT_LOCKED: "Your account is temporarily locked. Please try again later."
+  };
+  return map[error.code] || error.message || "Something went wrong. Please try again.";
+}
+
+// =======================================================================
+// View state machine
+// =======================================================================
+
+const ACCOUNT_VIEWS = ["welcome", "signin", "signup", "dashboard"];
+
+function setAccountView(view) {
+  ACCOUNT_VIEWS.forEach(name => {
+    document.getElementById(`account-view-${name}`).classList.toggle("hidden", name !== view);
+  });
+  // Leaving a view always resets its transient state, so coming back to
+  // it later never shows a stale error, a half-filled form, or last
+  // time's forgot-password step.
+  if (view !== "signin") resetSigninView();
+  if (view !== "signup") resetSignupView();
+  if (view === "dashboard") renderDashboard();
+}
+
+function resetSigninView() {
+  document.getElementById("account-signin-form").reset();
+  clearFieldError("signin-identifier");
+  clearFieldError("signin-password");
+  setFormError("signin-form-error", "");
+  document.getElementById("forgot-password-panel").classList.add("hidden");
+  document.getElementById("forgot-step-request").classList.remove("hidden");
+  document.getElementById("forgot-step-reset").classList.add("hidden");
+  document.getElementById("forgot-request-result").textContent = "";
+  document.getElementById("forgot-reset-result").textContent = "";
+}
+
+function resetSignupView() {
+  document.getElementById("account-signup-form").reset();
+  ["signup-fullname", "signup-phone", "signup-email", "signup-password"].forEach(clearFieldError);
+  setFormError("signup-form-error", "");
+}
+
+// =======================================================================
+// Validation helpers
+// =======================================================================
+
+function setFieldError(inputId, message) {
+  const input = document.getElementById(inputId);
+  const errorEl = document.getElementById(`${inputId}-error`);
+  if (errorEl) errorEl.textContent = message;
+  if (input) input.setAttribute("aria-invalid", message ? "true" : "false");
+}
+
+function clearFieldError(inputId) {
+  setFieldError(inputId, "");
+}
+
+function setFormError(elId, message) {
+  const el = document.getElementById(elId);
+  if (el) el.textContent = message;
+}
+
+function setButtonLoading(buttonId, isLoading, loadingLabel, normalLabel) {
+  const btn = document.getElementById(buttonId);
+  if (!btn) return;
+  btn.disabled = isLoading;
+  btn.textContent = isLoading ? loadingLabel : normalLabel;
+}
+
+// =======================================================================
+// Password show/hide
+// =======================================================================
+
+document.querySelectorAll(".password-toggle").forEach(btn => {
+  btn.addEventListener("click", () => {
+    const input = document.getElementById(btn.dataset.target);
+    const showing = input.type === "text";
+    input.type = showing ? "password" : "text";
+    btn.textContent = showing ? "Show" : "Hide";
+    btn.setAttribute("aria-label", showing ? "Show password" : "Hide password");
+  });
+});
+
+// =======================================================================
+// Nav button + welcome-state entry points
+// =======================================================================
+
 function updateAccountNav() {
   const btn = document.getElementById("account-nav-btn");
-  if (!btn) return;
-  btn.textContent = patientState.user ? (patientState.profile?.fullName?.split(" ")[0] || "My account") : "Sign in";
+  const mobileBtn = document.getElementById("account-nav-btn-mobile");
+  const label = patientState.user ? (patientState.profile?.fullName?.split(" ")[0] || "My account") : "Sign in";
+  if (btn) btn.textContent = label;
+  if (mobileBtn) mobileBtn.textContent = label;
 
   // A light convenience touch: prefill the booking form for a returning signed-in patient.
   if (patientState.user) {
@@ -685,86 +734,93 @@ function updateAccountNav() {
 }
 
 function renderAccountPanel() {
-  const authView = document.getElementById("account-auth-view");
-  const dashView = document.getElementById("account-dashboard-view");
-
-  if (!patientState.user) {
-    authView.classList.remove("hidden");
-    dashView.classList.add("hidden");
-    return;
-  }
-
-  authView.classList.add("hidden");
-  dashView.classList.remove("hidden");
-  document.getElementById("account-name").textContent = patientState.profile?.fullName || "there";
-  document.getElementById("account-phone").textContent = patientState.user.phone || "";
-  document.getElementById("account-fullname-input").value = patientState.profile?.fullName || "";
-  renderAccountBookings();
-}
-
-async function renderAccountBookings() {
-  const list = document.getElementById("account-bookings-list");
-  list.innerHTML = `<p class="empty-note">Loading…</p>`;
-  try {
-    const bookings = await patientApi("/api/my-bookings");
-    if (!bookings.length) {
-      list.innerHTML = `<p class="empty-note">No bookings yet. Once you book an ambulance, it'll show up here.</p>`;
-      return;
-    }
-    list.innerHTML = bookings.map(booking => `
-      <article class="item">
-        <div class="item-header">
-          <strong>#${booking.id}</strong>
-          ${statusChip(booking.status)}
-        </div>
-        <p>${booking.pickup} → ${booking.destination}</p>
-        <p class="item-meta">${new Date(booking.createdAt).toLocaleString("en-IN")}${booking.dispatchDistanceKm != null ? ` · ~${booking.dispatchDistanceKm} km` : ""}</p>
-      </article>
-    `).join("");
-  } catch (error) {
-    list.innerHTML = `<p class="load-error">${error.message}</p>`;
+  if (patientState.user) {
+    setAccountView("dashboard");
+  } else {
+    setAccountView("welcome");
   }
 }
 
-document.getElementById("show-signup-btn").addEventListener("click", () => {
-  document.getElementById("account-signin-form").classList.add("hidden");
-  document.getElementById("show-signup-btn").parentElement.classList.add("hidden");
-  document.getElementById("account-signup-form").classList.remove("hidden");
-  document.getElementById("show-signin-note").classList.remove("hidden");
-});
+document.getElementById("go-signin-btn").addEventListener("click", () => setAccountView("signin"));
+document.getElementById("go-signup-btn").addEventListener("click", () => setAccountView("signup"));
+document.getElementById("signin-to-signup-btn").addEventListener("click", () => setAccountView("signup"));
+document.getElementById("signup-to-signin-btn").addEventListener("click", () => setAccountView("signin"));
+document.getElementById("signin-back-btn").addEventListener("click", () => setAccountView("welcome"));
+document.getElementById("signup-back-btn").addEventListener("click", () => setAccountView("welcome"));
 
-document.getElementById("show-signin-btn").addEventListener("click", () => {
-  document.getElementById("account-signup-form").classList.add("hidden");
-  document.getElementById("show-signin-note").classList.add("hidden");
-  document.getElementById("account-signin-form").classList.remove("hidden");
-  document.getElementById("show-signup-btn").parentElement.classList.remove("hidden");
-});
+// =======================================================================
+// Sign in
+// =======================================================================
 
 document.getElementById("account-signin-form").addEventListener("submit", async event => {
   event.preventDefault();
   const { identifier, password } = formToObject(event.currentTarget);
-  const result = document.getElementById("account-signin-result");
-  result.textContent = "Signing in…";
+
+  clearFieldError("signin-identifier");
+  clearFieldError("signin-password");
+  setFormError("signin-form-error", "");
+
+  let hasError = false;
+  if (!identifier.trim()) {
+    setFieldError("signin-identifier", "Enter your phone number or email.");
+    hasError = true;
+  }
+  if (!password) {
+    setFieldError("signin-password", "Enter your password.");
+    hasError = true;
+  }
+  if (hasError) return;
+
+  setButtonLoading("signin-submit-btn", true, "Signing in…", "Sign in");
   try {
     const data = await patientApi("/api/auth/login", {
       method: "POST",
-      body: JSON.stringify({ role: "customer", identifier, password })
+      body: JSON.stringify({ role: "customer", identifier: identifier.trim(), password })
     });
     savePatientAuth(data);
     updateAccountNav();
-    event.currentTarget.reset();
-    result.textContent = "";
-    renderAccountPanel();
+    setAccountView("dashboard");
   } catch (error) {
-    result.textContent = error.message;
+    setFormError("signin-form-error", friendlyAuthError(error));
+  } finally {
+    setButtonLoading("signin-submit-btn", false, "Signing in…", "Sign in");
   }
 });
+
+// =======================================================================
+// Create account
+// =======================================================================
 
 document.getElementById("account-signup-form").addEventListener("submit", async event => {
   event.preventDefault();
   const payload = formToObject(event.currentTarget);
-  const result = document.getElementById("account-signup-result");
-  result.textContent = "Creating your account…";
+
+  ["signup-fullname", "signup-phone", "signup-email", "signup-password"].forEach(clearFieldError);
+  setFormError("signup-form-error", "");
+
+  let hasError = false;
+  if (!payload.fullName.trim()) {
+    setFieldError("signup-fullname", "Enter your full name.");
+    hasError = true;
+  }
+  if (!PHONE_PATTERN.test(payload.phone.trim())) {
+    setFieldError("signup-phone", "Enter a valid phone number.");
+    hasError = true;
+  }
+  if (payload.email.trim() && !EMAIL_PATTERN.test(payload.email.trim())) {
+    setFieldError("signup-email", "Enter a valid email address.");
+    hasError = true;
+  }
+  if (!payload.password) {
+    setFieldError("signup-password", "Enter a password.");
+    hasError = true;
+  } else if (payload.password.length < 8) {
+    setFieldError("signup-password", "Password must be at least 8 characters.");
+    hasError = true;
+  }
+  if (hasError) return;
+
+  setButtonLoading("signup-submit-btn", true, "Creating account…", "Create account");
   try {
     const data = await patientApi("/api/auth/signup", {
       method: "POST",
@@ -772,32 +828,223 @@ document.getElementById("account-signup-form").addEventListener("submit", async 
     });
     savePatientAuth(data);
     updateAccountNav();
-    event.currentTarget.reset();
-    result.textContent = "";
-    renderAccountPanel();
+    setAccountView("dashboard");
   } catch (error) {
-    result.textContent = error.message;
+    if (error.code === "PHONE_EXISTS") setFieldError("signup-phone", friendlyAuthError(error));
+    else if (error.code === "EMAIL_EXISTS") setFieldError("signup-email", friendlyAuthError(error));
+    else if (error.code === "WEAK_PASSWORD") setFieldError("signup-password", friendlyAuthError(error));
+    else setFormError("signup-form-error", "Unable to create your account. Please try again.");
+  } finally {
+    setButtonLoading("signup-submit-btn", false, "Creating account…", "Create account");
   }
 });
 
-document.getElementById("account-edit-form").addEventListener("submit", async event => {
+// =======================================================================
+// Forgot password (uses the existing forgot/reset-password API as-is)
+// =======================================================================
+
+document.getElementById("forgot-password-btn").addEventListener("click", () => {
+  document.getElementById("forgot-password-panel").classList.remove("hidden");
+});
+
+document.getElementById("forgot-request-btn").addEventListener("click", async () => {
+  const identifier = document.getElementById("forgot-identifier").value.trim();
+  clearFieldError("forgot-identifier");
+  const resultEl = document.getElementById("forgot-request-result");
+
+  if (!identifier) {
+    setFieldError("forgot-identifier", "Enter your phone number or email.");
+    return;
+  }
+
+  setButtonLoading("forgot-request-btn", true, "Sending…", "Send reset instructions");
+  try {
+    const body = EMAIL_PATTERN.test(identifier) ? { email: identifier } : { phone: identifier };
+    const data = await patientApi("/api/auth/forgot-password", { method: "POST", body: JSON.stringify(body) });
+    resultEl.textContent = data.demoResetToken
+      ? `Reset code (demo): ${data.demoResetToken}`
+      : "If an account exists, reset instructions have been sent.";
+    document.getElementById("forgot-step-request").classList.add("hidden");
+    document.getElementById("forgot-step-reset").classList.remove("hidden");
+    if (data.demoResetToken) document.getElementById("forgot-token").value = data.demoResetToken;
+  } catch (error) {
+    resultEl.textContent = friendlyAuthError(error);
+  } finally {
+    setButtonLoading("forgot-request-btn", false, "Sending…", "Send reset instructions");
+  }
+});
+
+document.getElementById("forgot-reset-btn").addEventListener("click", async () => {
+  const token = document.getElementById("forgot-token").value.trim();
+  const password = document.getElementById("forgot-new-password").value;
+  const resultEl = document.getElementById("forgot-reset-result");
+  clearFieldError("forgot-new-password");
+
+  if (!password || password.length < 8) {
+    setFieldError("forgot-new-password", "Password must be at least 8 characters.");
+    return;
+  }
+
+  setButtonLoading("forgot-reset-btn", true, "Resetting…", "Reset password");
+  try {
+    await patientApi("/api/auth/reset-password", { method: "POST", body: JSON.stringify({ token, password }) });
+    resultEl.textContent = "Password reset. You can now sign in.";
+    setTimeout(() => setAccountView("signin"), 1200);
+  } catch (error) {
+    resultEl.textContent = friendlyAuthError(error);
+  } finally {
+    setButtonLoading("forgot-reset-btn", false, "Resetting…", "Reset password");
+  }
+});
+
+// =======================================================================
+// Dashboard — account details (view / edit) + bookings
+// =======================================================================
+
+function renderDashboard() {
+  document.getElementById("account-dashboard-name").textContent = patientState.profile?.fullName?.split(" ")[0] || "there";
+  document.getElementById("detail-fullname").textContent = patientState.profile?.fullName || "—";
+  document.getElementById("detail-phone").textContent = patientState.user?.phone || "—";
+  document.getElementById("detail-email").textContent = patientState.user?.email || "Not added";
+
+  document.getElementById("account-details-view").classList.remove("hidden");
+  document.getElementById("edit-details-btn").classList.remove("hidden");
+  document.getElementById("account-details-edit").classList.add("hidden");
+
+  loadAccountBookings();
+}
+
+document.getElementById("edit-details-btn").addEventListener("click", () => {
+  document.getElementById("edit-fullname").value = patientState.profile?.fullName || "";
+  document.getElementById("edit-phone").value = patientState.user?.phone || "";
+  document.getElementById("edit-email").value = patientState.user?.email || "Not added";
+  clearFieldError("edit-fullname");
+  setFormError("edit-form-error", "");
+
+  document.getElementById("account-details-view").classList.add("hidden");
+  document.getElementById("edit-details-btn").classList.add("hidden");
+  document.getElementById("account-details-edit").classList.remove("hidden");
+});
+
+document.getElementById("cancel-edit-btn").addEventListener("click", () => {
+  document.getElementById("account-details-view").classList.remove("hidden");
+  document.getElementById("edit-details-btn").classList.remove("hidden");
+  document.getElementById("account-details-edit").classList.add("hidden");
+});
+
+document.getElementById("account-details-edit").addEventListener("submit", async event => {
   event.preventDefault();
-  const { fullName } = formToObject(event.currentTarget);
-  const result = document.getElementById("account-edit-result");
-  result.textContent = "Saving…";
+  const fullName = document.getElementById("edit-fullname").value.trim();
+  clearFieldError("edit-fullname");
+  setFormError("edit-form-error", "");
+
+  if (!fullName) {
+    setFieldError("edit-fullname", "Enter your full name.");
+    return;
+  }
+
+  setButtonLoading("save-details-btn", true, "Saving…", "Save changes");
   try {
     const res = await patientApi("/api/profile", { method: "PATCH", body: JSON.stringify({ fullName }) });
     patientState.profile = res.profile;
     localStorage.setItem(`${PATIENT_KEY}_profile`, JSON.stringify(res.profile));
     updateAccountNav();
-    result.textContent = "Saved.";
-    document.getElementById("account-name").textContent = res.profile.fullName;
+    document.getElementById("account-details-view").classList.remove("hidden");
+    document.getElementById("edit-details-btn").classList.remove("hidden");
+    document.getElementById("account-details-edit").classList.add("hidden");
+    document.getElementById("detail-fullname").textContent = res.profile.fullName;
+    document.getElementById("account-dashboard-name").textContent = res.profile.fullName.split(" ")[0];
   } catch (error) {
-    result.textContent = error.message;
+    setFormError("edit-form-error", "Unable to save your changes. Please try again.");
+  } finally {
+    setButtonLoading("save-details-btn", false, "Saving…", "Save changes");
   }
 });
 
-document.getElementById("account-signout-btn").addEventListener("click", () => {
+// ---- bookings: loading skeleton -> empty state or booking cards ----
+
+let ambulanceTypeCache = null;
+
+async function lookupAmbulanceType(ambulanceId) {
+  if (!ambulanceId) return null;
+  try {
+    if (!ambulanceTypeCache) ambulanceTypeCache = await fetch("/api/ambulances").then(r => r.json());
+    const match = ambulanceTypeCache.find(a => a.id === ambulanceId);
+    if (!match) return null;
+    const labels = { basic: "Basic Ambulance", advanced: "Advanced Ambulance", icu: "ICU Ambulance", neonatal: "Neonatal Ambulance" };
+    return labels[match.type] || match.type;
+  } catch {
+    return null;
+  }
+}
+
+async function loadAccountBookings() {
+  const list = document.getElementById("account-bookings-list");
+  list.innerHTML = `<div class="booking-skeleton"></div><div class="booking-skeleton"></div>`;
+
+  try {
+    const bookings = await patientApi("/api/my-bookings");
+
+    if (!bookings.length) {
+      list.innerHTML = `
+        <p class="empty-note">You haven't made any bookings yet.</p>
+        <button type="button" class="cta-secondary" id="empty-book-btn">Book an ambulance</button>
+      `;
+      document.getElementById("empty-book-btn").addEventListener("click", () => {
+        closePanel("account-panel");
+        document.getElementById("quick-book")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+      return;
+    }
+
+    const cardsHtml = await Promise.all(bookings.map(async booking => {
+      const ambulanceType = await lookupAmbulanceType(booking.ambulanceId);
+      const date = new Date(booking.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+      return `
+        <article class="item">
+          <div class="item-header">
+            <strong>Booking #${booking.id}</strong>
+            ${statusChip(booking.status)}
+          </div>
+          <div class="booking-card-details">
+            <div class="booking-card-row"><span>Ambulance</span><span>${escapeHtml(ambulanceType || "Not yet assigned")}</span></div>
+            <div class="booking-card-row"><span>Date</span><span>${escapeHtml(date)}</span></div>
+            <div class="booking-card-row"><span>Pickup</span><span>${escapeHtml(booking.pickup)}</span></div>
+          </div>
+          <button type="button" class="ghost-button" data-view-booking="${booking.id}" data-view-phone="${escapeHtml(booking.phone)}">View booking</button>
+        </article>
+      `;
+    }));
+
+    list.innerHTML = cardsHtml.join("");
+
+    list.querySelectorAll("[data-view-booking]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const trackerForm = document.getElementById("tracker-form");
+        if (!trackerForm) return;
+        trackerForm.elements.bookingId.value = btn.dataset.viewBooking;
+        trackerForm.elements.phone.value = btn.dataset.viewPhone;
+        closePanel("account-panel");
+        trackerForm.scrollIntoView({ behavior: "smooth", block: "center" });
+        trackerForm.requestSubmit();
+      });
+    });
+  } catch (error) {
+    list.innerHTML = `<p class="load-error">${escapeHtml(error.message)}</p>`;
+  }
+}
+
+// =======================================================================
+// Sign out
+// =======================================================================
+
+document.getElementById("account-signout-btn").addEventListener("click", async () => {
+  try {
+    await patientApi("/api/auth/logout", { method: "POST" });
+  } catch {
+    // Best-effort — even if this fails (e.g. offline), still clear the
+    // local session below so the user isn't stuck looking "signed in".
+  }
   clearPatientAuth();
   updateAccountNav();
   closePanel("account-panel");
