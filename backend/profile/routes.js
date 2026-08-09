@@ -211,6 +211,11 @@ async function handleProfileRoutes(req, res, url, parseBody, sendJson) {
 
     const body = await parseBody(req);
     const profile = getProfile(auth.user);
+    const validStatuses = ["online", "on_break", "offline"];
+    if (!validStatuses.includes(body.status)) {
+      sendJson(req, res, 400, { error: `Status must be one of: ${validStatuses.join(", ")}` });
+      return true;
+    }
     profile.liveStatus = body.status;
     profile.updatedAt = new Date().toISOString();
     sendJson(req, res, 200, { liveStatus: profile.liveStatus });

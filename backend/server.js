@@ -48,8 +48,26 @@ const http = require("http");
 const { handleMessage, emptySession } = require("../chatbot/chatbot");
 const { handleAuthRoutes } = require("./auth/routes");
 const { handleProfileRoutes } = require("./profile/routes");
-const { authenticate, requireAuth } = require("./auth/middleware");
+const { authenticate, requireAuth, getRequestMeta } = require("./auth/middleware");
 const { ROLE_PERMISSIONS } = require("./auth/store");
+
+// Rate limiting for the public write endpoints below (hospital/ambulance
+// onboarding, booking creation) — mirrors the same pattern already used in
+// backend/auth/routes.js for login/signup/OTP.
+const publicWriteRateLimits = new Map();
+const PUBLIC_WRITE_WINDOW_MS = 60000;
+const PUBLIC_WRITE_MAX = 20;
+function checkPublicWriteRateLimit(key) {
+  const now = Date.now();
+  const entry = publicWriteRateLimits.get(key) || { count: 0, resetAt: now + PUBLIC_WRITE_WINDOW_MS };
+  if (now > entry.resetAt) {
+    entry.count = 0;
+    entry.resetAt = now + PUBLIC_WRITE_WINDOW_MS;
+  }
+  entry.count += 1;
+  publicWriteRateLimits.set(key, entry);
+  return entry.count <= PUBLIC_WRITE_MAX;
+}
 
 const PORT = Number(process.env.PORT || 4173);
 const HOST = process.env.HOST || "127.0.0.1";
@@ -103,6 +121,30 @@ const chatSessions = new Map();
 // Utility functions
 // ---------------------------------------------------------------------
 
+// Applied to every response. The CSP is deliberately strict — same-origin
+// only, plus the two Google Fonts hosts this app actually loads. No inline
+// scripts/styles are used anywhere, so none are allowed here either.
+const SECURITY_HEADERS = {
+  "Content-Security-Policy": [
+    "default-src 'self'",
+    "script-src 'self'",
+    "style-src 'self' https://fonts.googleapis.com",
+    "font-src 'self' https://fonts.gstatic.com",
+    "img-src 'self' data:",
+    "connect-src 'self'",
+    "frame-ancestors 'none'",
+    "base-uri 'self'",
+    "form-action 'self'"
+  ].join("; "),
+  "X-Content-Type-Options": "nosniff",
+  "X-Frame-Options": "DENY",
+  "Referrer-Policy": "strict-origin-when-cross-origin",
+  "Permissions-Policy": "geolocation=(), camera=(), microphone=(), payment=()",
+  // Harmless over plain HTTP (browsers ignore it there) — takes effect
+  // automatically the moment this runs behind real HTTPS.
+  "Strict-Transport-Security": "max-age=31536000; includeSubDomains"
+};
+
 function corsHeaders(req) {
   if (ALLOWED_ORIGINS.includes("*")) {
     return { "Access-Control-Allow-Origin": "*" };
@@ -119,6 +161,7 @@ function sendJson(req, res, statusCode, data) {
   res.writeHead(statusCode, {
     "Content-Type": "application/json",
     "Content-Length": Buffer.byteLength(body),
+    ...SECURITY_HEADERS,
     ...corsHeaders(req),
     "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Demo-Role"
@@ -156,6 +199,14 @@ function requireFields(body, fields) {
 
 function nextId(items) {
   return items.length ? Math.max(...items.map(item => item.id)) + 1 : 1;
+}
+
+// SEC-021: lightweight, dependency-free bot mitigation for public forms —
+// a hidden field real users never see or fill, but simple scripted bots
+// that blindly fill every input often do. Doesn't replace a real CAPTCHA
+// for high-value targets, but meaningfully raises the bar for free.
+function isHoneypotTriggered(body) {
+  return Boolean(body && body.website);
 }
 
 // Real, server-verified authorization — checks an actual signed-in staff
@@ -296,7 +347,7 @@ function serveStatic(req, res) {
           sendJson(req, res, 404, { error: "Not found" });
           return;
         }
-        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", ...SECURITY_HEADERS });
         res.end(indexContent);
       });
       return;
@@ -321,7 +372,7 @@ function serveStatic(req, res) {
             tryCandidate(index + 1);
             return;
           }
-          res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+          res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", ...SECURITY_HEADERS });
           res.end(content);
         });
         return;
@@ -344,7 +395,7 @@ function serveStatic(req, res) {
           ".woff2": "font/woff2"
         };
 
-        res.writeHead(200, { "Content-Type": types[ext] || "application/octet-stream" });
+        res.writeHead(200, { "Content-Type": types[ext] || "application/octet-stream", ...SECURITY_HEADERS });
         res.end(content);
       });
     });
@@ -362,6 +413,7 @@ async function handleApi(req, res) {
   // CORS preflight
   if (req.method === "OPTIONS") {
     res.writeHead(204, {
+      ...SECURITY_HEADERS,
       ...corsHeaders(req),
       "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Demo-Role",
       "Access-Control-Allow-Methods": "GET,POST,PATCH,PUT,DELETE,OPTIONS"
@@ -390,7 +442,12 @@ async function handleApi(req, res) {
     return;
   }
   if (req.method === "POST" && url.pathname === "/api/hospitals") {
+    if (!checkPublicWriteRateLimit(`hospital-signup:${getRequestMeta(req).ip || "unknown"}`)) {
+      sendJson(req, res, 429, { error: "Too many requests. Please try again later.", code: "RATE_LIMITED" });
+      return;
+    }
     const body = await parseBody(req);
+    if (isHoneypotTriggered(body)) { sendJson(req, res, 400, { error: "Unable to process request." }); return; }
     const missing = requireFields(body, ["name", "city", "address", "phone", "email"]);
     if (missing.length) { sendJson(req, res, 400, { error: "Missing required fields", fields: missing }); return; }
     if (!PHONE_PATTERN.test(String(body.phone).trim())) { sendJson(req, res, 400, { error: "phone must be a valid phone number" }); return; }
@@ -427,7 +484,12 @@ async function handleApi(req, res) {
     return;
   }
   if (req.method === "POST" && url.pathname === "/api/ambulances") {
+    if (!checkPublicWriteRateLimit(`ambulance-signup:${getRequestMeta(req).ip || "unknown"}`)) {
+      sendJson(req, res, 429, { error: "Too many requests. Please try again later.", code: "RATE_LIMITED" });
+      return;
+    }
     const body = await parseBody(req);
+    if (isHoneypotTriggered(body)) { sendJson(req, res, 400, { error: "Unable to process request." }); return; }
     const missing = requireFields(body, ["registrationNumber", "type", "driverName", "phone", "email"]);
     if (missing.length) { sendJson(req, res, 400, { error: "Missing required fields", fields: missing }); return; }
     if (!AMBULANCE_TYPES.includes(body.type)) { sendJson(req, res, 400, { error: `type must be one of: ${AMBULANCE_TYPES.join(", ")}` }); return; }
@@ -484,7 +546,12 @@ async function handleApi(req, res) {
     return;
   }
   if (req.method === "POST" && url.pathname === "/api/bookings") {
+    if (!checkPublicWriteRateLimit(`booking-create:${getRequestMeta(req).ip || "unknown"}`)) {
+      sendJson(req, res, 429, { error: "Too many requests. Please try again in a moment.", code: "RATE_LIMITED" });
+      return;
+    }
     const body = await parseBody(req);
+    if (isHoneypotTriggered(body)) { sendJson(req, res, 400, { error: "Unable to process request." }); return; }
     const auth = authenticate(req);
     const customerId = auth && auth.user.roleSlug === "customer" ? auth.user.id : null;
     const result = createBooking(body, customerId);
@@ -588,7 +655,18 @@ const server = http.createServer((req, res) => {
   // API requests
   if (req.url.startsWith("/api/")) {
     handleApi(req, res).catch(error => {
-      sendJson(req, res, 400, { error: error.message });
+      // These two are deliberately client-facing validation messages from
+      // parseBody(). Anything else is an unexpected error — log it in full
+      // server-side (this used to go nowhere at all) and give the client
+      // only a generic message, not internal details.
+      const knownSafeMessages = ["Invalid JSON body", "Request body too large"];
+      if (!knownSafeMessages.includes(error.message)) {
+        console.error(`[HindCare] Unhandled error on ${req.method} ${req.url}:`, error);
+      }
+      const clientMessage = knownSafeMessages.includes(error.message)
+        ? error.message
+        : "Something went wrong. Please try again.";
+      sendJson(req, res, 400, { error: clientMessage });
     });
     return;
   }

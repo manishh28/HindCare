@@ -94,6 +94,10 @@ async function handleAuthRoutes(req, res, url, parseBody, sendJson) {
     }
 
     const body = await parseBody(req);
+    if (body && body.website) {
+      sendJson(req, res, 400, { error: "Unable to process request." });
+      return true;
+    }
     const missing = ["fullName", "phone", "password"].filter(f => !String(body[f] || "").trim());
     if (missing.length) {
       sendJson(req, res, 400, { error: "Missing required fields", fields: missing });
@@ -117,12 +121,11 @@ async function handleAuthRoutes(req, res, url, parseBody, sendJson) {
 
     const phone = normalizePhone(body.phone);
     const email = body.email ? body.email.trim().toLowerCase() : null;
-    if (findUserByPhone(phone)) {
-      sendJson(req, res, 409, { error: "An account with this phone number already exists", code: "PHONE_EXISTS" });
-      return true;
-    }
-    if (email && findUserByEmail(email)) {
-      sendJson(req, res, 409, { error: "An account with this email already exists", code: "EMAIL_EXISTS" });
+    if (findUserByPhone(phone) || (email && findUserByEmail(email))) {
+      sendJson(req, res, 409, {
+        error: "An account with these details already exists. Try signing in instead.",
+        code: "ACCOUNT_EXISTS"
+      });
       return true;
     }
 
@@ -194,6 +197,10 @@ async function handleAuthRoutes(req, res, url, parseBody, sendJson) {
         method = "otp";
         user = findUserByPhone(body.phone);
       } else {
+        if (body.employeeId && !validateEmployeeId(body.employeeId)) {
+          sendJson(req, res, 400, { error: "Employee ID format looks incorrect.", code: "INVALID_EMPLOYEE_ID" });
+          return true;
+        }
         user = findUserByEmployeeId(body.employeeId);
         if (user && body.phone) {
           const phoneUser = findUserByPhone(body.phone);
@@ -201,6 +208,10 @@ async function handleAuthRoutes(req, res, url, parseBody, sendJson) {
         }
       }
     } else if (roleSlug === "dispatcher") {
+      if (body.employeeId && !validateEmployeeId(body.employeeId)) {
+        sendJson(req, res, 400, { error: "Employee ID format looks incorrect.", code: "INVALID_EMPLOYEE_ID" });
+        return true;
+      }
       user = findUserByEmployeeId(body.employeeId);
     } else if (roleSlug === "hospital_admin") {
       user = findUserByEmail(body.email);
@@ -363,6 +374,10 @@ async function handleAuthRoutes(req, res, url, parseBody, sendJson) {
 
   // ---- Forgot Password ----
   if (req.method === "POST" && url.pathname === "/api/auth/forgot-password") {
+    if (!checkRateLimit(`pwreset:${ipKey}`)) {
+      sendJson(req, res, 429, { error: "Too many requests. Please try again later.", code: "RATE_LIMITED" });
+      return true;
+    }
     const body = await parseBody(req);
     const identifier = String(body.email || body.phone || "").trim();
     const user = validateEmail(identifier) ? findUserByEmail(identifier) : findUserByPhone(identifier);
@@ -382,6 +397,10 @@ async function handleAuthRoutes(req, res, url, parseBody, sendJson) {
 
   // ---- Reset Password ----
   if (req.method === "POST" && url.pathname === "/api/auth/reset-password") {
+    if (!checkRateLimit(`pwreset:${ipKey}`)) {
+      sendJson(req, res, 429, { error: "Too many requests. Please try again later.", code: "RATE_LIMITED" });
+      return true;
+    }
     const body = await parseBody(req);
     const reset = verifyResetToken(body.token);
     if (!reset) {
@@ -411,6 +430,10 @@ async function handleAuthRoutes(req, res, url, parseBody, sendJson) {
   if (req.method === "POST" && url.pathname === "/api/auth/change-password") {
     const auth = requireAuth(req, res, sendJson);
     if (!auth) return true;
+    if (!checkRateLimit(`pwchange:${ipKey}`)) {
+      sendJson(req, res, 429, { error: "Too many requests. Please try again later.", code: "RATE_LIMITED" });
+      return true;
+    }
 
     const body = await parseBody(req);
     const user = auth.user;
@@ -429,9 +452,10 @@ async function handleAuthRoutes(req, res, url, parseBody, sendJson) {
     user.passwordHash = await hashPassword(body.newPassword);
     user.passwordChangedAt = new Date().toISOString();
     user.updatedAt = new Date().toISOString();
+    revokeAllSessions(user.id, auth.sessionId);
     auditAction(req, user.id, "password.changed", "user", user.id);
 
-    sendJson(req, res, 200, { message: "Password changed successfully" });
+    sendJson(req, res, 200, { message: "Password changed successfully. You've been signed out of your other devices." });
     return true;
   }
 
