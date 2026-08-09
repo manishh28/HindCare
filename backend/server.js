@@ -294,17 +294,17 @@ function createBooking(body, customerId = null) {
   const { ambulance, distanceKm } = findBestAmbulance(body.pickup);
   const booking = {
     id: nextId(db.bookings),
-    patientName: String(body.patientName).trim(),
+    patientName: String(body.patientName).trim().slice(0, 120),
     phone: String(body.phone).trim(),
-    pickup: String(body.pickup).trim(),
-    destination: hospital ? hospital.name : String(body.destination).trim(),
+    pickup: String(body.pickup).trim().slice(0, 200),
+    destination: hospital ? hospital.name : String(body.destination).trim().slice(0, 200),
     hospitalId: hospital ? hospital.id : null,
     customerId,
     emergencyType,
     ambulanceId: ambulance ? ambulance.id : null,
     dispatchDistanceKm: distanceKm,
     status: ambulance ? "assigned" : "requested",
-    notes: body.notes ? String(body.notes).trim() : "",
+    notes: body.notes ? String(body.notes).trim().slice(0, 500) : "",
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
@@ -454,7 +454,7 @@ async function handleApi(req, res) {
     if (!EMAIL_PATTERN.test(String(body.email).trim())) { sendJson(req, res, 400, { error: "email must be a valid email address" }); return; }
     const hospital = {
       id: nextId(db.hospitals),
-      name: String(body.name).trim(), city: String(body.city).trim(), address: String(body.address).trim(),
+      name: String(body.name).trim().slice(0, 150), city: String(body.city).trim().slice(0, 80), address: String(body.address).trim().slice(0, 250),
       phone: String(body.phone).trim(), email: String(body.email).trim().toLowerCase(),
       emergencyAvailable: Boolean(body.emergencyAvailable ?? true), totalBeds: Number(body.totalBeds || 0),
       availableBeds: Number(body.availableBeds || 0), status: "pending"
@@ -496,8 +496,8 @@ async function handleApi(req, res) {
     if (!PHONE_PATTERN.test(String(body.phone).trim())) { sendJson(req, res, 400, { error: "phone must be a valid phone number" }); return; }
     if (!EMAIL_PATTERN.test(String(body.email).trim())) { sendJson(req, res, 400, { error: "email must be a valid email address" }); return; }
     const ambulance = {
-      id: nextId(db.ambulances), registrationNumber: String(body.registrationNumber).trim(), type: body.type,
-      driverName: String(body.driverName).trim(), phone: String(body.phone).trim(), email: String(body.email).trim().toLowerCase(),
+      id: nextId(db.ambulances), registrationNumber: String(body.registrationNumber).trim().slice(0, 30), type: body.type,
+      driverName: String(body.driverName).trim().slice(0, 120), phone: String(body.phone).trim(), email: String(body.email).trim().toLowerCase(),
       currentLat: body.currentLat !== undefined ? Number(body.currentLat) : null,
       currentLng: body.currentLng !== undefined ? Number(body.currentLng) : null,
       // Starts offline, not available: a self-registered ambulance must be
@@ -606,6 +606,10 @@ async function handleApi(req, res) {
 
   // ----------- Chatbot -----------
   if (req.method === "POST" && url.pathname === "/api/chatbot/message") {
+    if (!checkPublicWriteRateLimit(`chatbot:${getRequestMeta(req).ip || "unknown"}`)) {
+      sendJson(req, res, 429, { error: "Too many requests. Please try again in a moment.", code: "RATE_LIMITED" });
+      return;
+    }
     const body = await parseBody(req);
     const sessionId = String(body.sessionId || "anonymous");
     const prior = chatSessions.get(sessionId) || emptySession();

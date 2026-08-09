@@ -362,7 +362,7 @@ function renderEdit(el) {
             <div class="photo-actions">
               <label class="md-btn md-btn-outlined">
                 Upload photo
-                <input type="file" id="photo-input" accept="image/*" class="hidden">
+                <input type="file" id="photo-input" accept="image/png,image/jpeg,image/webp,image/gif" class="hidden">
               </label>
               ${profile.profilePhotoUrl ? '<button type="button" id="remove-photo" class="md-btn md-btn-text">Remove photo</button>' : ""}
             </div>

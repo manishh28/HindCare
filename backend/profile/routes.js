@@ -67,12 +67,24 @@ async function handleProfileRoutes(req, res, url, parseBody, sendJson) {
 
     const body = await parseBody(req);
     const profile = getProfile(auth.user);
-    if (!body.imageData || !String(body.imageData).startsWith("data:image/")) {
-      sendJson(req, res, 400, { error: "Valid base64 image required" });
+    const imageData = String(body.imageData || "");
+
+    // Only safe raster formats — deliberately NOT svg+xml, which can embed
+    // <script> tags and event handlers. Browsers mostly (but not always,
+    // and not in every future context this data URI might end up in)
+    // sandbox scripts inside <img>-rendered SVGs, so this shouldn't be the
+    // only thing standing between an upload and script execution.
+    const allowedPrefixes = ["data:image/png;base64,", "data:image/jpeg;base64,", "data:image/webp;base64,", "data:image/gif;base64,"];
+    if (!allowedPrefixes.some(prefix => imageData.startsWith(prefix))) {
+      sendJson(req, res, 400, { error: "Image must be a PNG, JPEG, WEBP, or GIF." });
+      return true;
+    }
+    if (imageData.length > 1_400_000) { // ~1MB of actual image data once base64 overhead is accounted for
+      sendJson(req, res, 400, { error: "Image is too large. Please use a smaller photo." });
       return true;
     }
 
-    profile.profilePhotoUrl = body.imageData;
+    profile.profilePhotoUrl = imageData;
     profile.updatedAt = new Date().toISOString();
     auditAction(req, auth.user.id, "profile.photo_updated", "profile", auth.user.id);
 
