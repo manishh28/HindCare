@@ -1837,3 +1837,14 @@ select:focus {
     grid-template-columns: 1fr;
   }
 }
+
+/* Honeypot field for public forms — invisible and unreachable for real
+   users (off-screen, not tab-focusable, hidden from screen readers) but
+   present in the DOM for simple bots that blindly fill every input. */
+.hp-field {
+  position: absolute;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}

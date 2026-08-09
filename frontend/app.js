@@ -624,8 +624,7 @@ function friendlyAuthError(error) {
   const map = {
     INVALID_CREDENTIALS: "Phone/email or password is incorrect.",
     INVALID_ROLE: "Something went wrong. Please try again.",
-    PHONE_EXISTS: "An account with this phone number already exists. Try signing in instead.",
-    EMAIL_EXISTS: "An account with this email already exists. Try signing in instead.",
+    ACCOUNT_EXISTS: "An account with these details already exists. Try signing in instead.",
     INVALID_PHONE: "Enter a valid phone number.",
     INVALID_EMAIL: "Enter a valid email address.",
     WEAK_PASSWORD: error.message || "Choose a stronger password.",
@@ -830,8 +829,7 @@ document.getElementById("account-signup-form").addEventListener("submit", async 
     updateAccountNav();
     setAccountView("dashboard");
   } catch (error) {
-    if (error.code === "PHONE_EXISTS") setFieldError("signup-phone", friendlyAuthError(error));
-    else if (error.code === "EMAIL_EXISTS") setFieldError("signup-email", friendlyAuthError(error));
+    if (error.code === "ACCOUNT_EXISTS") setFormError("signup-form-error", friendlyAuthError(error));
     else if (error.code === "WEAK_PASSWORD") setFieldError("signup-password", friendlyAuthError(error));
     else setFormError("signup-form-error", "Unable to create your account. Please try again.");
   } finally {

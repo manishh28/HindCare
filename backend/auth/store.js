@@ -181,7 +181,14 @@ function normalizePhone(phone) {
   const digits = String(phone || "").replace(/\D/g, "");
   if (digits.length === 10) return `+91${digits}`;
   if (digits.startsWith("91") && digits.length === 12) return `+${digits}`;
-  return String(phone || "").trim();
+  // Leading trunk 0 (e.g. "0" + 10-digit number), a common local-dialing format.
+  if (digits.startsWith("0") && digits.length === 11) return `+91${digits.slice(1)}`;
+  if (digits.startsWith("091") && digits.length === 13) return `+91${digits.slice(3)}`;
+  // Unrecognized format: still normalize to a stable, digit-only shape
+  // rather than passing back the raw, differently-formatted original —
+  // that's what previously allowed the same real number to register as two
+  // "different" accounts depending on how it was typed.
+  return digits ? `+${digits}` : String(phone || "").trim();
 }
 
 function isAccountLocked(user) {
