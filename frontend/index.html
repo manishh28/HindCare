@@ -615,6 +615,16 @@
             <button type="submit" class="cta-primary cta-block" id="signin-submit-btn">Sign in</button>
           </form>
 
+          <form id="account-mfa-form" class="partner-form hidden" novalidate>
+            <p class="account-intro">Enter the verification code sent to your email.</p>
+            <label class="field">
+              Verification code
+              <input id="signin-mfa-code" name="mfaCode" type="text" inputmode="numeric" autocomplete="one-time-code" required aria-describedby="signin-mfa-error">
+              <span class="field-error" id="signin-mfa-error"></span>
+            </label>
+            <button type="submit" class="cta-primary cta-block" id="signin-mfa-submit-btn">Verify &amp; sign in</button>
+          </form>
+
           <button type="button" class="footer-link-button account-forgot-link" id="forgot-password-btn">Forgot password?</button>
 
           <div class="account-forgot-panel hidden" id="forgot-password-panel">
@@ -653,7 +663,14 @@
         <!-- STATE: create account -->
         <div class="account-view hidden" id="account-view-signup">
           <h2>Create your account</h2>
-          <p class="account-intro">Save your details and easily access your bookings next time.</p>
+          <p class="account-intro">Choose the kind of account you need.</p>
+
+          <div class="role-select-group" id="signup-role-group" role="radiogroup" aria-label="Account type">
+            <label class="role-chip"><input type="radio" name="signupRole" value="customer" checked> Patient</label>
+            <label class="role-chip"><input type="radio" name="signupRole" value="hospital_admin"> Hospital</label>
+            <label class="role-chip"><input type="radio" name="signupRole" value="fleet_owner"> Ambulance fleet</label>
+            <label class="role-chip"><input type="radio" name="signupRole" value="driver"> Driver</label>
+          </div>
 
           <form id="account-signup-form" class="partner-form" novalidate>
             <div class="hp-field" aria-hidden="true">
@@ -673,6 +690,15 @@
               Email <span class="field-optional">Optional</span>
               <input id="signup-email" name="email" type="email" autocomplete="email" aria-describedby="signup-email-error">
               <span class="field-error" id="signup-email-error"></span>
+            </label>
+            <label class="field hidden" id="signup-company-field">
+              Company name <span class="field-optional">Optional</span>
+              <input id="signup-company" name="companyName" type="text" autocomplete="organization">
+            </label>
+            <label class="field hidden" id="signup-fleetcode-field">
+              Fleet code <span class="field-optional">Given to you by your fleet owner</span>
+              <input id="signup-fleetcode" name="fleetCode" type="text" autocomplete="off" aria-describedby="signup-fleetcode-error">
+              <span class="field-error" id="signup-fleetcode-error"></span>
             </label>
             <label class="field">
               Password

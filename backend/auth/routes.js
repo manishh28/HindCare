@@ -86,7 +86,7 @@ async function handleAuthRoutes(req, res, url, parseBody, sendJson) {
     return true;
   }
 
-  // ---- Patient sign up (public, customer accounts only) ----
+  // ---- Sign up (public) — patient by default, or hospital/fleet owner/driver ----
   if (req.method === "POST" && url.pathname === "/api/auth/signup") {
     if (!checkRateLimit(`signup:${ipKey}`)) {
       sendJson(req, res, 429, { error: "Too many requests. Please try again later.", code: "RATE_LIMITED" });
@@ -98,7 +98,12 @@ async function handleAuthRoutes(req, res, url, parseBody, sendJson) {
       sendJson(req, res, 400, { error: "Unable to process request." });
       return true;
     }
+
+    const selfServiceRoles = ["customer", "hospital_admin", "fleet_owner", "driver"];
+    const roleSlug = selfServiceRoles.includes(body.role) ? body.role : "customer";
+
     const missing = ["fullName", "phone", "password"].filter(f => !String(body[f] || "").trim());
+    if (roleSlug === "driver" && !String(body.fleetCode || "").trim()) missing.push("fleetCode");
     if (missing.length) {
       sendJson(req, res, 400, { error: "Missing required fields", fields: missing });
       return true;
@@ -119,6 +124,20 @@ async function handleAuthRoutes(req, res, url, parseBody, sendJson) {
       return true;
     }
 
+    // Drivers link to an existing fleet owner by code — verify it up front,
+    // before creating any account, so a bad code never leaves a dangling user.
+    let fleetOwnerId = null;
+    if (roleSlug === "driver") {
+      const code = String(body.fleetCode).trim().toUpperCase();
+      const fleetProfile = store.fleetOwnerProfiles.find(p => p.fleetCode === code);
+      const fleetOwner = fleetProfile && findUserById(fleetProfile.userId);
+      if (!fleetOwner || fleetOwner.roleSlug !== "fleet_owner" || fleetOwner.status !== "active") {
+        sendJson(req, res, 400, { error: "That fleet code doesn't match a registered fleet owner.", code: "INVALID_FLEET_CODE" });
+        return true;
+      }
+      fleetOwnerId = fleetOwner.id;
+    }
+
     const phone = normalizePhone(body.phone);
     const email = body.email ? body.email.trim().toLowerCase() : null;
     if (findUserByPhone(phone) || (email && findUserByEmail(email))) {
@@ -129,7 +148,7 @@ async function handleAuthRoutes(req, res, url, parseBody, sendJson) {
       return true;
     }
 
-    const role = getRoleBySlug("customer");
+    const role = getRoleBySlug(roleSlug);
     const user = {
       id: nextUserId(),
       roleId: role.id,
@@ -155,7 +174,19 @@ async function handleAuthRoutes(req, res, url, parseBody, sendJson) {
       deletedAt: null
     };
     store.users.push(user);
-    attachProfile(user, { fullName: body.fullName.trim() });
+
+    const profileData = { fullName: body.fullName.trim() };
+    if (roleSlug === "hospital_admin") {
+      profileData.hospitalId = null; // set once they register their hospital in a follow-up call
+      profileData.adminName = body.fullName.trim();
+    }
+    if (roleSlug === "fleet_owner") {
+      profileData.companyName = body.companyName ? String(body.companyName).trim().slice(0, 120) : null;
+    }
+    if (roleSlug === "driver") {
+      profileData.fleetOwnerId = fleetOwnerId;
+    }
+    attachProfile(user, profileData);
 
     const session = createSession(user.id, {
       deviceName: body.deviceName || "Web Browser",
@@ -182,44 +213,67 @@ async function handleAuthRoutes(req, res, url, parseBody, sendJson) {
     }
 
     const body = await parseBody(req);
-    const roleSlug = String(body.role || "").toLowerCase();
-    const role = getRoleBySlug(roleSlug);
+    let roleSlug = String(body.role || "").toLowerCase();
+    let role = getRoleBySlug(roleSlug);
+
+    let user = null;
+    let method = "password";
+
+    // Unified sign-in: if no role was specified but an identifier was,
+    // resolve the account by identifier first and use its real role —
+    // avoids needing a role picker on the main site's login form.
+    if (!role && !body.employeeId) {
+      const identifier = String(body.identifier || body.email || body.phone || "").trim();
+      if (identifier) {
+        const found = validateEmail(identifier) ? findUserByEmail(identifier) : findUserByPhone(identifier);
+        if (found && ["customer", "hospital_admin", "fleet_owner", "driver"].includes(found.roleSlug)) {
+          user = found;
+          roleSlug = found.roleSlug;
+          role = getRoleBySlug(roleSlug);
+        }
+      }
+    }
+
     if (!role) {
       sendJson(req, res, 400, { error: "Invalid role", code: "INVALID_ROLE" });
       return true;
     }
 
-    let user = null;
-    let method = "password";
-
-    if (roleSlug === "driver") {
-      if (body.loginMethod === "otp") {
-        method = "otp";
-        user = findUserByPhone(body.phone);
-      } else {
+    if (!user) {
+      if (roleSlug === "driver") {
+        if (body.loginMethod === "otp") {
+          method = "otp";
+          user = findUserByPhone(body.phone);
+        } else if (body.employeeId) {
+          if (!validateEmployeeId(body.employeeId)) {
+            sendJson(req, res, 400, { error: "Employee ID format looks incorrect.", code: "INVALID_EMPLOYEE_ID" });
+            return true;
+          }
+          user = findUserByEmployeeId(body.employeeId);
+          if (user && body.phone) {
+            const phoneUser = findUserByPhone(body.phone);
+            if (!phoneUser || phoneUser.id !== user.id) user = null;
+          }
+        } else {
+          // Self-registered drivers have no employeeId — sign in by phone/email instead.
+          const identifier = String(body.identifier || body.phone || body.email || "").trim();
+          user = validateEmail(identifier) ? findUserByEmail(identifier) : findUserByPhone(identifier);
+        }
+      } else if (roleSlug === "dispatcher") {
         if (body.employeeId && !validateEmployeeId(body.employeeId)) {
           sendJson(req, res, 400, { error: "Employee ID format looks incorrect.", code: "INVALID_EMPLOYEE_ID" });
           return true;
         }
         user = findUserByEmployeeId(body.employeeId);
-        if (user && body.phone) {
-          const phoneUser = findUserByPhone(body.phone);
-          if (!phoneUser || phoneUser.id !== user.id) user = null;
-        }
+      } else if (roleSlug === "hospital_admin" || roleSlug === "fleet_owner") {
+        const identifier = String(body.identifier || body.phone || body.email || "").trim();
+        user = validateEmail(identifier) ? findUserByEmail(identifier) : findUserByPhone(identifier);
+      } else if (roleSlug === "super_admin") {
+        user = findUserByEmail(body.email);
+      } else if (roleSlug === "customer") {
+        const identifier = String(body.identifier || body.phone || body.email || "").trim();
+        user = validateEmail(identifier) ? findUserByEmail(identifier) : findUserByPhone(identifier);
       }
-    } else if (roleSlug === "dispatcher") {
-      if (body.employeeId && !validateEmployeeId(body.employeeId)) {
-        sendJson(req, res, 400, { error: "Employee ID format looks incorrect.", code: "INVALID_EMPLOYEE_ID" });
-        return true;
-      }
-      user = findUserByEmployeeId(body.employeeId);
-    } else if (roleSlug === "hospital_admin") {
-      user = findUserByEmail(body.email);
-    } else if (roleSlug === "super_admin") {
-      user = findUserByEmail(body.email);
-    } else if (roleSlug === "customer") {
-      const identifier = String(body.identifier || body.phone || body.email || "").trim();
-      user = validateEmail(identifier) ? findUserByEmail(identifier) : findUserByPhone(identifier);
     }
 
     if (!user || user.roleSlug !== roleSlug) {
@@ -294,7 +348,8 @@ async function handleAuthRoutes(req, res, url, parseBody, sendJson) {
       driver: "/profile/#driver",
       dispatcher: "/profile/#dispatcher",
       hospital_admin: "/profile/#hospital-admin",
-      super_admin: "/profile/#super-admin"
+      super_admin: "/profile/#super-admin",
+      fleet_owner: "/profile/#fleet-owner"
     };
 
     sendJson(req, res, 200, {

@@ -1848,3 +1848,50 @@ select:focus {
   height: 1px;
   overflow: hidden;
 }
+
+/* Signup role selector */
+.role-select-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 18px;
+}
+
+.role-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 14px;
+  border: 1.5px solid var(--line);
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+.role-chip input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+}
+
+.role-chip:has(input:checked) {
+  border-color: var(--siren);
+  color: var(--siren-dark);
+  background: var(--siren-tint);
+}
+
+.role-chip:has(input:focus-visible) {
+  outline: 2px solid var(--siren);
+  outline-offset: 2px;
+}
+
+/* JS-driven fallback for browsers without :has() support */
+.role-chip.selected {
+  border-color: var(--siren);
+  color: var(--siren-dark);
+  background: var(--siren-tint);
+}

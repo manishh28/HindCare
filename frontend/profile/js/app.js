@@ -15,7 +15,10 @@ const ICONS = {
   map: '<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/>',
   file: '<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/>',
   activity: '<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>',
-  system: '<rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/>'
+  system: '<rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/>',
+  hospital: '<path d="M12 2a10 10 0 100 20 10 10 0 000-20z"/><path d="M12 8v8M8 12h8"/>',
+  truck: '<rect x="1" y="6" width="15" height="12" rx="1"/><path d="M16 10h4l3 3v5h-7z"/><circle cx="6" cy="20" r="2"/><circle cx="18" cy="20" r="2"/>',
+  users: '<path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/>'
 };
 
 function icon(name) {
@@ -36,10 +39,17 @@ const COMMON_NAV = [
 const ROLE_NAV = {
   driver: [{ id: "documents", label: "Documents", icon: "file" }],
   dispatcher: [],
-  hospital_admin: [{ id: "activity", label: "Activity Log", icon: "activity" }],
+  hospital_admin: [
+    { id: "hospital", label: "My Hospital", icon: "hospital" },
+    { id: "activity", label: "Activity Log", icon: "activity" }
+  ],
   super_admin: [
     { id: "activity", label: "Activity Log", icon: "activity" },
     { id: "system", label: "System", icon: "system" }
+  ],
+  fleet_owner: [
+    { id: "fleet", label: "My Fleet", icon: "truck" },
+    { id: "fleet-drivers", label: "My Drivers", icon: "users" }
   ]
 };
 
@@ -51,7 +61,10 @@ const PAGE_TITLES = {
   addresses: "Addresses",
   documents: "Documents",
   activity: "Activity Log",
-  system: "System"
+  system: "System",
+  hospital: "My Hospital",
+  fleet: "My Fleet",
+  "fleet-drivers": "My Drivers"
 };
 
 // ---------------------------------------------------------------------
@@ -158,7 +171,10 @@ const RENDERERS = {
   addresses: renderAddresses,
   documents: renderDocuments,
   activity: renderActivity,
-  system: renderSystem
+  system: renderSystem,
+  hospital: renderHospital,
+  fleet: renderFleet,
+  "fleet-drivers": renderFleetDrivers
 };
 
 async function renderRoute() {
@@ -190,6 +206,8 @@ async function renderOverview(el) {
 
   if (role === "driver") {
     statsHtml = statCard(profile.rating, "Rating") + statCard(profile.completedTrips, "Trips completed") + statCard(profile.experienceYears, "Years experience");
+    const ambulance = data.assignedAmbulance;
+    const trip = data.activeBooking;
     extraCard = `
       <div class="profile-card">
         <div class="profile-card-header"><h2>Availability</h2></div>
@@ -200,7 +218,25 @@ async function renderOverview(el) {
             `).join("")}
           </div>
         </div>
-      </div>`;
+      </div>
+      <div class="profile-card">
+        <div class="profile-card-header"><h2>My ambulance</h2></div>
+        <div class="profile-card-body">
+          ${ambulance
+            ? infoRow("Vehicle", ambulance.registrationNumber) + infoRow("Type", ambulance.type) + infoRow("Status", ambulance.status)
+            : '<div class="empty-state-card">Not assigned to a vehicle yet. Your fleet owner assigns you to an ambulance.</div>'}
+        </div>
+      </div>
+      ${trip ? `
+      <div class="profile-card full-width">
+        <div class="profile-card-header"><h2>Active trip</h2></div>
+        <div class="profile-card-body">
+          ${infoRow("Booking", "#" + trip.id)}
+          ${infoRow("Pickup", trip.pickup)}
+          ${infoRow("Destination", trip.destination)}
+          ${infoRow("Status", trip.status)}
+        </div>
+      </div>` : ""}`;
   } else if (role === "dispatcher") {
     statsHtml = statCard(profile.callsHandled, "Calls handled") + statCard(profile.avgResponseSeconds, "Avg. response (s)") + statCard(`${profile.shiftStart}–${profile.shiftEnd}`, "Shift");
     extraCard = `
@@ -215,15 +251,22 @@ async function renderOverview(el) {
         </div>
       </div>`;
   } else if (role === "hospital_admin") {
-    const hospital = await resolveHospital(profile.hospitalId);
-    statsHtml = statCard(hospital ? `${hospital.availableBeds}/${hospital.totalBeds}` : "—", "Beds available")
-      + statCard(formatDate(profile.licenseExpiry), "License expiry")
-      + statCard(hospital?.city || "—", "City");
+    const hospital = data.hospital || await resolveHospital(profile.hospitalId);
+    if (hospital) {
+      statsHtml = statCard(`${hospital.availableBeds}/${hospital.totalBeds}`, "Beds available")
+        + statCard(hospital.status, "Hospital status")
+        + statCard(hospital.city || "—", "City");
+    }
   } else if (role === "super_admin") {
     const sys = data.systemInfo || {};
     statsHtml = statCard(sys.environment || "—", "Environment")
       + statCard(sys.uptime ? `${Math.floor(sys.uptime / 60)}m` : "—", "Server uptime")
       + statCard((data.apiKeys || []).length, "Active API keys");
+  } else if (role === "fleet_owner") {
+    const fleet = data.fleet || [];
+    statsHtml = statCard(fleet.length, "Ambulances")
+      + statCard(fleet.filter(a => a.status === "available").length, "Available now")
+      + statCard((data.drivers || []).length, "Drivers linked");
   }
 
   const rows = overviewRows(role, profile, user);
@@ -303,6 +346,12 @@ function overviewRows(role, profile, user) {
       + infoRow("Organization", profile.organizationName)
       + infoRow("API access", profile.apiKeysEnabled ? "Enabled" : "Disabled");
   }
+  if (role === "fleet_owner") {
+    return common
+      + infoRow("Full name", profile.fullName)
+      + infoRow("Company name", profile.companyName || "—")
+      + infoRow("Fleet code", profile.fleetCode);
+  }
   return common;
 }
 
@@ -334,6 +383,10 @@ const EDIT_FIELDS = {
   super_admin: [
     { key: "fullName", label: "Full name", type: "text" },
     { key: "organizationName", label: "Organization name", type: "text" }
+  ],
+  fleet_owner: [
+    { key: "fullName", label: "Full name", type: "text" },
+    { key: "companyName", label: "Company name", type: "text" }
   ]
 };
 
@@ -647,6 +700,291 @@ function renderSystem(el) {
       </div>
     </div>
   `;
+}
+
+// ---------------------------------------------------------------------
+// Hospital (hospital_admin)
+// ---------------------------------------------------------------------
+async function renderHospital(el) {
+  const hospital = data.hospital;
+
+  if (!hospital) {
+    el.innerHTML = `
+      <div class="profile-card full-width">
+        <div class="profile-card-header"><h2>Register your hospital</h2></div>
+        <div class="profile-card-body">
+          <p class="info-label" style="margin-bottom:1rem;">You haven't registered a hospital yet. Once submitted, an administrator will review and approve it before it appears to patients.</p>
+          <form id="hospital-register-form" class="edit-form">
+            <div class="md-field"><label>Hospital name</label><div class="md-input-wrap"><input class="md-input" id="reg-name" required></div></div>
+            <div class="md-field"><label>City</label><div class="md-input-wrap"><input class="md-input" id="reg-city" required></div></div>
+            <div class="md-field"><label>Address</label><div class="md-input-wrap"><input class="md-input" id="reg-address" required></div></div>
+            <div class="md-field"><label>Phone</label><div class="md-input-wrap"><input class="md-input" type="tel" id="reg-phone" required></div></div>
+            <div class="md-field"><label>Email</label><div class="md-input-wrap"><input class="md-input" type="email" id="reg-email" required></div></div>
+            <div class="form-actions"><button type="submit" class="md-btn md-btn-filled">Register hospital</button></div>
+            <p class="form-result" id="hospital-register-result" role="status"></p>
+          </form>
+        </div>
+      </div>`;
+
+    document.getElementById("hospital-register-form").addEventListener("submit", async e => {
+      e.preventDefault();
+      const result = document.getElementById("hospital-register-result");
+      try {
+        const created = await profileApi("/api/hospitals", {
+          method: "POST",
+          body: JSON.stringify({
+            name: document.getElementById("reg-name").value.trim(),
+            city: document.getElementById("reg-city").value.trim(),
+            address: document.getElementById("reg-address").value.trim(),
+            phone: document.getElementById("reg-phone").value.trim(),
+            email: document.getElementById("reg-email").value.trim()
+          })
+        });
+        data.hospital = created;
+        toast("Hospital registered — pending admin approval", "success");
+        renderRoute();
+      } catch (err) {
+        result.textContent = err.message;
+      }
+    });
+    return;
+  }
+
+  const deptRow = (d, i) => `
+    <div class="list-item" data-dept-index="${i}">
+      <div style="flex:1;"><strong>${escapeHtml(d.name)}</strong></div>
+      <select class="md-input" style="max-width:160px;" data-dept-status>
+        ${["available", "limited", "unavailable"].map(s => `<option value="${s}" ${d.status === s ? "selected" : ""}>${s}</option>`).join("")}
+      </select>
+      <button type="button" class="ghost-button danger" data-dept-remove>Remove</button>
+    </div>`;
+
+  el.innerHTML = `
+    <div class="profile-card full-width">
+      <div class="profile-card-header"><h2>${escapeHtml(hospital.name)}</h2></div>
+      <div class="profile-card-body">
+        ${infoRow("Status", hospital.status)}
+        ${infoRow("City", hospital.city)}
+        ${infoRow("Address", hospital.address)}
+        ${infoRow("Phone", hospital.phone)}
+        ${hospital.status === "pending" ? '<div class="empty-state-card" style="margin-top:1rem;">Waiting on admin approval before patients can see this hospital.</div>' : ""}
+      </div>
+    </div>
+    <div class="profile-card">
+      <div class="profile-card-header"><h2>Beds</h2></div>
+      <div class="profile-card-body">
+        <div class="md-field"><label>Total beds</label><div class="md-input-wrap"><input class="md-input" type="number" min="0" id="hosp-total-beds" value="${hospital.totalBeds}"></div></div>
+        <div class="md-field"><label>Available beds</label><div class="md-input-wrap"><input class="md-input" type="number" min="0" id="hosp-available-beds" value="${hospital.availableBeds}"></div></div>
+        <button type="button" class="md-btn md-btn-filled" id="hosp-save-beds-btn">Save beds</button>
+        <p class="form-result" id="hosp-beds-result" role="status"></p>
+      </div>
+    </div>
+    <div class="profile-card">
+      <div class="profile-card-header"><h2>Departments</h2></div>
+      <div class="profile-card-body">
+        <div id="hosp-dept-list">${(hospital.departments || []).map(deptRow).join("") || '<div class="empty-state-card">No departments added yet.</div>'}</div>
+        <div class="md-field" style="margin-top:1rem;"><label>Add department</label><div class="md-input-wrap"><input class="md-input" id="hosp-dept-new" placeholder="e.g. Neurology"></div></div>
+        <button type="button" class="md-btn md-btn-outlined" id="hosp-add-dept-btn">Add</button>
+        <button type="button" class="md-btn md-btn-filled" id="hosp-save-dept-btn" style="margin-left:0.5rem;">Save departments</button>
+        <p class="form-result" id="hosp-dept-result" role="status"></p>
+      </div>
+    </div>
+  `;
+
+  document.getElementById("hosp-save-beds-btn").addEventListener("click", async () => {
+    const result = document.getElementById("hosp-beds-result");
+    try {
+      const updated = await profileApi(`/api/hospitals/${hospital.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          totalBeds: Number(document.getElementById("hosp-total-beds").value),
+          availableBeds: Number(document.getElementById("hosp-available-beds").value)
+        })
+      });
+      data.hospital = { ...data.hospital, ...updated };
+      result.textContent = "Saved.";
+      renderRoute();
+    } catch (err) {
+      result.textContent = err.message;
+    }
+  });
+
+  document.getElementById("hosp-add-dept-btn").addEventListener("click", () => {
+    const input = document.getElementById("hosp-dept-new");
+    const name = input.value.trim();
+    if (!name) return;
+    hospital.departments = hospital.departments || [];
+    hospital.departments.push({ name, status: "available" });
+    input.value = "";
+    renderRoute();
+  });
+
+  document.getElementById("hosp-dept-list").addEventListener("click", e => {
+    if (e.target.matches("[data-dept-remove]")) {
+      const row = e.target.closest("[data-dept-index]");
+      hospital.departments.splice(Number(row.dataset.deptIndex), 1);
+      renderRoute();
+    }
+  });
+
+  document.getElementById("hosp-save-dept-btn").addEventListener("click", async () => {
+    const result = document.getElementById("hosp-dept-result");
+    const rows = document.querySelectorAll("#hosp-dept-list [data-dept-index]");
+    const departments = Array.from(rows).map(row => ({
+      name: row.querySelector("strong").textContent,
+      status: row.querySelector("[data-dept-status]").value
+    }));
+    try {
+      const updated = await profileApi(`/api/hospitals/${hospital.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ departments })
+      });
+      data.hospital = { ...data.hospital, ...updated };
+      result.textContent = "Saved.";
+      renderRoute();
+    } catch (err) {
+      result.textContent = err.message;
+    }
+  });
+}
+
+// ---------------------------------------------------------------------
+// Fleet (fleet_owner)
+// ---------------------------------------------------------------------
+function renderFleet(el) {
+  const fleet = data.fleet || [];
+  const AMBULANCE_STATUSES = ["available", "busy", "maintenance", "offline"];
+
+  el.innerHTML = `
+    <div class="profile-card full-width">
+      <div class="profile-card-header"><h2>My ambulances</h2></div>
+      <div class="profile-card-body">
+        ${fleet.length ? fleet.map(a => `
+          <div class="list-item">
+            <div style="flex:1;">
+              <strong>${escapeHtml(a.registrationNumber)}</strong>
+              <div class="info-label">${escapeHtml(a.type)}${a.driverId ? " · driver assigned" : " · no driver assigned"}</div>
+            </div>
+            <select class="md-input" style="max-width:160px;" data-ambulance-id="${a.id}">
+              ${AMBULANCE_STATUSES.map(s => `<option value="${s}" ${a.status === s ? "selected" : ""}>${s}</option>`).join("")}
+            </select>
+          </div>
+        `).join("") : '<div class="empty-state-card">No ambulances yet — add your first one below.</div>'}
+      </div>
+    </div>
+    <div class="profile-card full-width">
+      <div class="profile-card-header"><h2>Add an ambulance</h2></div>
+      <div class="profile-card-body">
+        <form id="add-ambulance-form" class="edit-form">
+          <div class="md-field"><label>Registration number</label><div class="md-input-wrap"><input class="md-input" id="amb-reg" required></div></div>
+          <div class="md-field"><label>Type</label><div class="md-input-wrap">
+            <select class="md-input" id="amb-type">
+              <option value="basic">Basic</option>
+              <option value="advanced">Advanced</option>
+              <option value="icu">ICU</option>
+              <option value="neonatal">Neonatal</option>
+            </select>
+          </div></div>
+          <div class="md-field"><label>Contact phone</label><div class="md-input-wrap"><input class="md-input" type="tel" id="amb-phone" required></div></div>
+          <div class="md-field"><label>Contact email</label><div class="md-input-wrap"><input class="md-input" type="email" id="amb-email" required></div></div>
+          <div class="form-actions"><button type="submit" class="md-btn md-btn-filled">Add ambulance</button></div>
+          <p class="form-result" id="add-ambulance-result" role="status"></p>
+        </form>
+      </div>
+    </div>
+  `;
+
+  el.querySelectorAll("[data-ambulance-id]").forEach(select => {
+    select.addEventListener("change", async () => {
+      try {
+        await profileApi(`/api/ambulances/${select.dataset.ambulanceId}`, {
+          method: "PATCH",
+          body: JSON.stringify({ status: select.value })
+        });
+        const item = data.fleet.find(a => a.id === Number(select.dataset.ambulanceId));
+        if (item) item.status = select.value;
+        toast("Status updated", "success");
+      } catch (err) {
+        toast(err.message, "error");
+      }
+    });
+  });
+
+  document.getElementById("add-ambulance-form").addEventListener("submit", async e => {
+    e.preventDefault();
+    const result = document.getElementById("add-ambulance-result");
+    try {
+      const created = await profileApi("/api/ambulances", {
+        method: "POST",
+        body: JSON.stringify({
+          registrationNumber: document.getElementById("amb-reg").value.trim(),
+          type: document.getElementById("amb-type").value,
+          driverName: "Unassigned",
+          phone: document.getElementById("amb-phone").value.trim(),
+          email: document.getElementById("amb-email").value.trim()
+        })
+      });
+      data.fleet.push(created);
+      toast("Ambulance added — starts offline until you activate it", "success");
+      renderRoute();
+    } catch (err) {
+      result.textContent = err.message;
+    }
+  });
+}
+
+// ---------------------------------------------------------------------
+// Fleet drivers (fleet_owner)
+// ---------------------------------------------------------------------
+function renderFleetDrivers(el) {
+  const drivers = data.drivers || [];
+  const fleet = data.fleet || [];
+
+  el.innerHTML = `
+    <div class="profile-card full-width">
+      <div class="profile-card-header"><h2>Your fleet code</h2></div>
+      <div class="profile-card-body">
+        <p class="info-label">Share this with drivers so they can link their account to your fleet at signup.</p>
+        <div class="stat-card" style="max-width:200px; margin-top:0.75rem;"><strong>${escapeHtml(data.profile?.fleetCode || "")}</strong><span>Fleet code</span></div>
+      </div>
+    </div>
+    <div class="profile-card full-width">
+      <div class="profile-card-header"><h2>Drivers</h2></div>
+      <div class="profile-card-body">
+        ${drivers.length ? drivers.map(d => `
+          <div class="list-item">
+            <div style="flex:1;">
+              <strong>${escapeHtml(d.fullName)}</strong>
+              <div class="info-label">${escapeHtml(d.phone || "")} · ${escapeHtml(d.availabilityStatus || "unknown")}</div>
+            </div>
+            <select class="md-input" style="max-width:220px;" data-driver-id="${d.id}">
+              <option value="">Not assigned</option>
+              ${fleet.map(a => `<option value="${a.id}" ${d.assignedAmbulanceId === a.id ? "selected" : ""}>${escapeHtml(a.registrationNumber)}</option>`).join("")}
+            </select>
+          </div>
+        `).join("") : '<div class="empty-state-card">No drivers linked yet. Share your fleet code above.</div>'}
+      </div>
+    </div>
+  `;
+
+  el.querySelectorAll("[data-driver-id]").forEach(select => {
+    select.addEventListener("change", async () => {
+      const driverId = Number(select.dataset.driverId);
+      const ambulanceId = select.value ? Number(select.value) : null;
+      try {
+        if (ambulanceId) {
+          await profileApi(`/api/ambulances/${ambulanceId}`, { method: "PATCH", body: JSON.stringify({ driverId }) });
+        } else {
+          const current = fleet.find(a => a.driverId === driverId);
+          if (current) await profileApi(`/api/ambulances/${current.id}`, { method: "PATCH", body: JSON.stringify({ driverId: null }) });
+        }
+        toast("Assignment updated", "success");
+        renderRoute();
+      } catch (err) {
+        toast(err.message, "error");
+      }
+    });
+  });
 }
 
 boot();

@@ -10,14 +10,14 @@ const {
 
 const { requireAuth, auditAction } = require("../auth/middleware");
 
-async function handleProfileRoutes(req, res, url, parseBody, sendJson) {
+async function handleProfileRoutes(req, res, url, parseBody, sendJson, db) {
   // ---- Get full profile ----
   if (req.method === "GET" && url.pathname === "/api/profile") {
     const auth = requireAuth(req, res, sendJson);
     if (!auth) return true;
 
     const profile = getProfile(auth.user);
-    const related = getRelatedData(auth.user.id, auth.user.roleSlug);
+    const related = getRelatedData(auth.user.id, auth.user.roleSlug, db);
 
     sendJson(req, res, 200, {
       user: sanitizeUser(auth.user),
@@ -251,7 +251,7 @@ async function handleProfileRoutes(req, res, url, parseBody, sendJson) {
     const data = {
       user: sanitizeUser(auth.user),
       profile: getProfile(auth.user),
-      ...getRelatedData(auth.user.id, auth.user.roleSlug),
+      ...getRelatedData(auth.user.id, auth.user.roleSlug, db),
       exportedAt: new Date().toISOString()
     };
     auditAction(req, auth.user.id, "profile.data_exported", "user", auth.user.id);
@@ -277,7 +277,7 @@ async function handleProfileRoutes(req, res, url, parseBody, sendJson) {
   return false;
 }
 
-function getRelatedData(userId, roleSlug) {
+function getRelatedData(userId, roleSlug, db) {
   const data = {
     emergencyContacts: store.emergencyContacts.filter(c => c.userId === userId),
     addresses: store.addresses.filter(a => a.userId === userId),
@@ -287,6 +287,37 @@ function getRelatedData(userId, roleSlug) {
   if (roleSlug === "driver") {
     data.bankDetails = store.driverBankDetails.find(b => b.userId === userId) || null;
     data.documents = store.documents.filter(d => d.userId === userId);
+    if (db) {
+      const myAmbulance = db.ambulances.find(a => a.driverId === userId) || null;
+      data.assignedAmbulance = myAmbulance;
+      data.activeBooking = myAmbulance
+        ? db.bookings.find(b => b.ambulanceId === myAmbulance.id && ["assigned", "on_route"].includes(b.status)) || null
+        : null;
+    }
+  }
+
+  if (roleSlug === "fleet_owner" && db) {
+    const myAmbulances = db.ambulances.filter(a => a.ownerId === userId);
+    data.fleet = myAmbulances;
+    data.drivers = store.driverProfiles
+      .filter(p => p.fleetOwnerId === userId)
+      .map(p => {
+        const driverUser = findUserById(p.userId);
+        const assignedAmbulance = myAmbulances.find(a => a.driverId === p.userId) || null;
+        return {
+          id: p.userId,
+          fullName: p.fullName,
+          phone: driverUser ? driverUser.phone : null,
+          availabilityStatus: p.availabilityStatus,
+          assignedAmbulanceId: assignedAmbulance ? assignedAmbulance.id : null
+        };
+      });
+  }
+
+  if (roleSlug === "hospital_admin" && db) {
+    const myHospital = db.hospitals.find(h => h.ownerId === userId) || null;
+    data.hospital = myHospital;
+    data.bookings = myHospital ? db.bookings.filter(b => b.hospitalId === myHospital.id).slice(-20).reverse() : [];
   }
 
   if (roleSlug === "super_admin") {
@@ -309,7 +340,8 @@ function getEditableFields(roleSlug) {
     dispatcher: [...common, "fullName"],
     hospital_admin: [...common, "adminName", "phone", "gstNumber", "notificationEmail", "notificationSms"],
     super_admin: [...common, "fullName", "organizationName"],
-    customer: [...common, "fullName"]
+    customer: [...common, "fullName"],
+    fleet_owner: [...common, "fullName", "companyName"]
   };
   return map[roleSlug] || common;
 }
