@@ -654,9 +654,14 @@ function setAccountView(view) {
 
 function resetSigninView() {
   document.getElementById("account-signin-form").reset();
+  document.getElementById("account-signin-form").classList.remove("hidden");
+  document.getElementById("account-mfa-form").classList.add("hidden");
+  document.getElementById("account-mfa-form").reset();
   clearFieldError("signin-identifier");
   clearFieldError("signin-password");
+  clearFieldError("signin-mfa-code");
   setFormError("signin-form-error", "");
+  pendingMfaCredentials = null;
   document.getElementById("forgot-password-panel").classList.add("hidden");
   document.getElementById("forgot-step-request").classList.remove("hidden");
   document.getElementById("forgot-step-reset").classList.add("hidden");
@@ -666,8 +671,15 @@ function resetSigninView() {
 
 function resetSignupView() {
   document.getElementById("account-signup-form").reset();
-  ["signup-fullname", "signup-phone", "signup-email", "signup-password"].forEach(clearFieldError);
+  ["signup-fullname", "signup-phone", "signup-email", "signup-fleetcode", "signup-password"].forEach(clearFieldError);
   setFormError("signup-form-error", "");
+  const customerRadio = document.querySelector('input[name="signupRole"][value="customer"]');
+  if (customerRadio) customerRadio.checked = true;
+  document.querySelectorAll("#signup-role-group .role-chip").forEach(chip => {
+    chip.classList.toggle("selected", chip.querySelector("input").checked);
+  });
+  document.getElementById("signup-company-field").classList.add("hidden");
+  document.getElementById("signup-fleetcode-field").classList.add("hidden");
 }
 
 // =======================================================================
@@ -751,6 +763,8 @@ document.getElementById("signup-back-btn").addEventListener("click", () => setAc
 // Sign in
 // =======================================================================
 
+let pendingMfaCredentials = null;
+
 document.getElementById("account-signin-form").addEventListener("submit", async event => {
   event.preventDefault();
   const { identifier, password } = formToObject(event.currentTarget);
@@ -774,17 +788,58 @@ document.getElementById("account-signin-form").addEventListener("submit", async 
   try {
     const data = await patientApi("/api/auth/login", {
       method: "POST",
-      body: JSON.stringify({ role: "customer", identifier: identifier.trim(), password })
+      body: JSON.stringify({ identifier: identifier.trim(), password })
     });
-    savePatientAuth(data);
-    updateAccountNav();
-    setAccountView("dashboard");
+
+    if (data.requiresMfa) {
+      pendingMfaCredentials = { identifier: identifier.trim(), password };
+      document.getElementById("account-signin-form").classList.add("hidden");
+      document.getElementById("account-mfa-form").classList.remove("hidden");
+      return;
+    }
+
+    completeSignIn(data);
   } catch (error) {
     setFormError("signin-form-error", friendlyAuthError(error));
   } finally {
     setButtonLoading("signin-submit-btn", false, "Signing in…", "Sign in");
   }
 });
+
+document.getElementById("account-mfa-form").addEventListener("submit", async event => {
+  event.preventDefault();
+  const { mfaCode } = formToObject(event.currentTarget);
+  clearFieldError("signin-mfa-code");
+  if (!mfaCode.trim() || !pendingMfaCredentials) return;
+
+  setButtonLoading("signin-mfa-submit-btn", true, "Verifying…", "Verify & sign in");
+  try {
+    const data = await patientApi("/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ ...pendingMfaCredentials, mfaCode: mfaCode.trim() })
+    });
+    pendingMfaCredentials = null;
+    completeSignIn(data);
+  } catch (error) {
+    setFieldError("signin-mfa-code", friendlyAuthError(error));
+  } finally {
+    setButtonLoading("signin-mfa-submit-btn", false, "Verifying…", "Verify & sign in");
+  }
+});
+
+function completeSignIn(data) {
+  if (data.user.role === "customer") {
+    savePatientAuth(data);
+    updateAccountNav();
+    setAccountView("dashboard");
+  } else {
+    // Hospital/fleet/driver accounts operate from /profile/, not this panel.
+    localStorage.setItem("hindcare_auth_token", data.accessToken);
+    localStorage.setItem("hindcare_auth_refresh", data.refreshToken);
+    localStorage.setItem("hindcare_auth_user", JSON.stringify(data.user));
+    window.location.href = data.redirectTo || "/profile/";
+  }
+}
 
 // =======================================================================
 // Create account
@@ -793,8 +848,10 @@ document.getElementById("account-signin-form").addEventListener("submit", async 
 document.getElementById("account-signup-form").addEventListener("submit", async event => {
   event.preventDefault();
   const payload = formToObject(event.currentTarget);
+  const role = document.querySelector('input[name="signupRole"]:checked')?.value || "customer";
+  payload.role = role;
 
-  ["signup-fullname", "signup-phone", "signup-email", "signup-password"].forEach(clearFieldError);
+  ["signup-fullname", "signup-phone", "signup-email", "signup-fleetcode", "signup-password"].forEach(clearFieldError);
   setFormError("signup-form-error", "");
 
   let hasError = false;
@@ -808,6 +865,10 @@ document.getElementById("account-signup-form").addEventListener("submit", async 
   }
   if (payload.email.trim() && !EMAIL_PATTERN.test(payload.email.trim())) {
     setFieldError("signup-email", "Enter a valid email address.");
+    hasError = true;
+  }
+  if (role === "driver" && !payload.fleetCode.trim()) {
+    setFieldError("signup-fleetcode", "Enter the fleet code your fleet owner gave you.");
     hasError = true;
   }
   if (!payload.password) {
@@ -825,16 +886,39 @@ document.getElementById("account-signup-form").addEventListener("submit", async 
       method: "POST",
       body: JSON.stringify(payload)
     });
-    savePatientAuth(data);
-    updateAccountNav();
-    setAccountView("dashboard");
+
+    if (role === "customer") {
+      savePatientAuth(data);
+      updateAccountNav();
+      setAccountView("dashboard");
+    } else {
+      // Hospital/fleet/driver accounts use the operational dashboard at
+      // /profile/, not the lightweight patient panel — hand off the
+      // session using the same storage keys that dashboard already reads.
+      localStorage.setItem("hindcare_auth_token", data.accessToken);
+      localStorage.setItem("hindcare_auth_refresh", data.refreshToken);
+      localStorage.setItem("hindcare_auth_user", JSON.stringify(data.user));
+      window.location.href = "/profile/";
+    }
   } catch (error) {
     if (error.code === "ACCOUNT_EXISTS") setFormError("signup-form-error", friendlyAuthError(error));
     else if (error.code === "WEAK_PASSWORD") setFieldError("signup-password", friendlyAuthError(error));
+    else if (error.code === "INVALID_FLEET_CODE") setFieldError("signup-fleetcode", error.message);
     else setFormError("signup-form-error", "Unable to create your account. Please try again.");
   } finally {
     setButtonLoading("signup-submit-btn", false, "Creating account…", "Create account");
   }
+});
+
+// Toggle role-specific signup fields
+document.getElementById("signup-role-group").addEventListener("change", event => {
+  const role = event.target.value;
+  document.querySelectorAll("#signup-role-group .role-chip").forEach(chip => {
+    chip.classList.toggle("selected", chip.querySelector("input").checked);
+  });
+  document.getElementById("signup-company-field").classList.toggle("hidden", role !== "fleet_owner");
+  document.getElementById("signup-fleetcode-field").classList.toggle("hidden", role !== "driver");
+  document.getElementById("signup-fleetcode").required = role === "driver";
 });
 
 // =======================================================================

@@ -6,9 +6,6 @@ import {
 } from "./validation.js";
 
 const ROLE_META = {
-  driver: { icon: "🚑", title: "Ambulance Driver", desc: "Employee ID + mobile login", class: "driver" },
-  dispatcher: { icon: "📞", title: "Dispatcher", desc: "Call center & dispatch operations", class: "dispatcher" },
-  hospital_admin: { icon: "🏥", title: "Hospital Admin", desc: "Manage hospital operations", class: "hospital_admin" },
   super_admin: { icon: "🛡️", title: "Super Admin", desc: "Enterprise system administration", class: "super_admin" }
 };
 
@@ -304,14 +301,13 @@ function renderScreen() {
   }
 
   let html = "";
-  if (route === "/welcome" || route === "/") html = screenWelcome();
-  else if (route === "/roles") html = screenRoleSelect();
-  else if (route.startsWith("/signin")) html = screenSignIn(selectedRole || "");
+  if (route === "/welcome" || route === "/" || route === "/roles") html = screenSignIn("super_admin");
+  else if (route.startsWith("/signin")) html = screenSignIn("super_admin");
   else if (route === "/forgot-password") html = screenForgotPassword();
   else if (route.startsWith("/reset-password")) html = screenResetPassword();
   else if (route === "/mfa") html = screenMfa();
   else if (route === "/password-changed") html = screenStatus("success", "Password changed!", "Your password has been updated successfully.", "Sign In", "/signin");
-  else if (route === "/session-expired") html = screenStatus("warning", "Session expired", "Your session has timed out for security. Please sign in again.", "Sign In", "/roles");
+  else if (route === "/session-expired") html = screenStatus("warning", "Session expired", "Your session has timed out for security. Please sign in again.", "Sign In", "/welcome");
   else if (route === "/account-locked") html = screenStatus("error", "Account locked", "Too many failed attempts. Try again in 15 minutes or contact support.", "Contact Support", "/welcome");
   else if (route === "/access-denied") html = screenStatus("error", "Access denied", "You don't have permission to access this resource.", "Go Home", "/welcome");
   else html = screenStatus("error", "Page not found", "The page you're looking for doesn't exist.", "Go Home", "/welcome");

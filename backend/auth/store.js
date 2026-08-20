@@ -16,7 +16,8 @@ const ROLES = [
   { id: 2, slug: "dispatcher", name: "Dispatcher / Call Center", mfaRequired: false },
   { id: 3, slug: "hospital_admin", name: "Hospital Admin", mfaRequired: true },
   { id: 4, slug: "super_admin", name: "Super Admin", mfaRequired: true },
-  { id: 5, slug: "customer", name: "Patient", mfaRequired: false }
+  { id: 5, slug: "customer", name: "Patient", mfaRequired: false },
+  { id: 6, slug: "fleet_owner", name: "Ambulance Fleet Owner", mfaRequired: false }
 ];
 
 const ROLE_PERMISSIONS = {
@@ -24,7 +25,8 @@ const ROLE_PERMISSIONS = {
   dispatcher: ["bookings.read", "bookings.update", "bookings.dispatch", "profile.read", "profile.update"],
   hospital_admin: ["bookings.read", "hospitals.manage", "ambulances.manage", "profile.read", "profile.update", "audit.read"],
   super_admin: ["bookings.read", "bookings.update", "bookings.dispatch", "hospitals.manage", "ambulances.manage", "users.manage", "audit.read", "system.configure", "profile.read", "profile.update"],
-  customer: ["bookings.read", "profile.read", "profile.update"]
+  customer: ["bookings.read", "profile.read", "profile.update"],
+  fleet_owner: ["bookings.read", "ambulances.manage", "profile.read", "profile.update"]
 };
 
 let nextUserId = 6;
@@ -47,6 +49,7 @@ const store = {
   hospitalAdminProfiles: [],
   superAdminProfiles: [],
   customerProfiles: [],
+  fleetOwnerProfiles: [],
   addresses: [],
   emergencyContacts: [],
   documents: [],
@@ -65,6 +68,13 @@ async function seedDemoUsers() {
       email: "rahul.singh@fleet.hindcare.in",
       phone: "+919111111111",
       profile: { fullName: "Rahul Singh", licenseNumber: "UP-DL-2019-884521", licenseExpiry: "2028-03-15", vehicleNumber: "UP32 AB 1001", availabilityStatus: "available", experienceYears: 6, rating: 4.7, completedTrips: 1240 }
+    },
+    {
+      roleSlug: "fleet_owner",
+      employeeId: null,
+      email: "suresh@yadavambulance.in",
+      phone: "+919555555555",
+      profile: { fullName: "Suresh Yadav", companyName: "Yadav Ambulance Services" }
     },
     {
       roleSlug: "dispatcher",
@@ -120,13 +130,23 @@ async function seedDemoUsers() {
     store.users.push(user);
     attachProfile(user, demo.profile);
   }
+
+  // Link demo accounts together now that real ids exist.
+  const demoFleetOwner = store.users.find(u => u.email === "suresh@yadavambulance.in");
+  const demoDriverProfile = store.driverProfiles.find(p => {
+    const owner = findUserById(p.userId);
+    return owner && owner.email === "rahul.singh@fleet.hindcare.in";
+  });
+  if (demoFleetOwner && demoDriverProfile) {
+    demoDriverProfile.fleetOwnerId = demoFleetOwner.id;
+  }
 }
 
 function attachProfile(user, profile) {
   const base = { userId: user.id, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
   switch (user.roleSlug) {
     case "driver":
-      store.driverProfiles.push({ ...base, profilePhotoUrl: null, languages: ["en", "hi"], emergencyContactName: "Sunita Singh", emergencyContactPhone: "+919111111112", currentShiftStart: null, currentShiftEnd: null, ...profile });
+      store.driverProfiles.push({ ...base, profilePhotoUrl: null, languages: ["en", "hi"], emergencyContactName: "Sunita Singh", emergencyContactPhone: "+919111111112", currentShiftStart: null, currentShiftEnd: null, fleetOwnerId: null, ...profile });
       break;
     case "dispatcher":
       store.dispatcherProfiles.push({ ...base, profilePhotoUrl: null, avgResponseSeconds: 45, ...profile });
@@ -139,6 +159,15 @@ function attachProfile(user, profile) {
       break;
     case "customer":
       store.customerProfiles.push({ ...base, profilePhotoUrl: null, fullName: profile.fullName });
+      break;
+    case "fleet_owner":
+      store.fleetOwnerProfiles.push({
+        ...base,
+        profilePhotoUrl: null,
+        fullName: profile.fullName,
+        companyName: profile.companyName || null,
+        fleetCode: `FLT${String(user.id).padStart(4, "0")}`
+      });
       break;
     default:
       break;
@@ -343,6 +372,8 @@ function getProfile(user) {
       return store.superAdminProfiles.find(p => p.userId === user.id);
     case "customer":
       return store.customerProfiles.find(p => p.userId === user.id);
+    case "fleet_owner":
+      return store.fleetOwnerProfiles.find(p => p.userId === user.id);
     default:
       return null;
   }

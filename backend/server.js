@@ -49,7 +49,7 @@ const { handleMessage, emptySession } = require("../chatbot/chatbot");
 const { handleAuthRoutes } = require("./auth/routes");
 const { handleProfileRoutes } = require("./profile/routes");
 const { authenticate, requireAuth, getRequestMeta } = require("./auth/middleware");
-const { ROLE_PERMISSIONS } = require("./auth/store");
+const { ROLE_PERMISSIONS, findUserByEmail, getProfile, seeded } = require("./auth/store");
 
 // Rate limiting for the public write endpoints below (hospital/ambulance
 // onboarding, booking creation) — mirrors the same pattern already used in
@@ -104,16 +104,45 @@ const KNOWN_AREAS = [
 
 const db = {
   hospitals: [
-    { id: 1, name: "HindCare Emergency Hospital", city: "Lucknow", address: "SGPGI Road, Lucknow", phone: "+91-9000000001", email: "contact@hindcare-hospital.example", emergencyAvailable: true, totalBeds: 120, availableBeds: 28, status: "approved" },
-    { id: 2, name: "MedTech City Hospital", city: "Lucknow", address: "Gomti Nagar, Lucknow", phone: "+91-9000000002", email: "contact@medtechcity.example", emergencyAvailable: true, totalBeds: 80, availableBeds: 12, status: "approved" }
+    { id: 1, name: "HindCare Emergency Hospital", city: "Lucknow", address: "SGPGI Road, Lucknow", phone: "+91-9000000001", email: "contact@hindcare-hospital.example", emergencyAvailable: true, totalBeds: 120, availableBeds: 28, status: "approved", ownerId: null, departments: [
+      { name: "Emergency", status: "available" },
+      { name: "Cardiology", status: "available" },
+      { name: "ICU", status: "limited" }
+    ] },
+    { id: 2, name: "MedTech City Hospital", city: "Lucknow", address: "Gomti Nagar, Lucknow", phone: "+91-9000000002", email: "contact@medtechcity.example", emergencyAvailable: true, totalBeds: 80, availableBeds: 12, status: "approved", ownerId: null, departments: [
+      { name: "Emergency", status: "available" },
+      { name: "Orthopedics", status: "available" }
+    ] }
   ],
   ambulances: [
-    { id: 1, registrationNumber: "UP32 AB 1001", type: "advanced", driverName: "Rahul Singh", phone: "+91-9111111111", email: "rahul.singh@fleet.example", currentLat: 26.8467, currentLng: 80.9462, status: "available" },
-    { id: 2, registrationNumber: "UP32 AB 1002", type: "basic", driverName: "Amit Verma", phone: "+91-9222222222", email: "amit.verma@fleet.example", currentLat: 26.8500, currentLng: 80.9500, status: "busy" }
+    { id: 1, registrationNumber: "UP32 AB 1001", type: "advanced", driverName: "Rahul Singh", phone: "+91-9111111111", email: "rahul.singh@fleet.example", currentLat: 26.8467, currentLng: 80.9462, status: "available", ownerId: null, driverId: null },
+    { id: 2, registrationNumber: "UP32 AB 1002", type: "basic", driverName: "Amit Verma", phone: "+91-9222222222", email: "amit.verma@fleet.example", currentLat: 26.8500, currentLng: 80.9500, status: "busy", ownerId: null, driverId: null }
   ],
   bookings: [],
   chatbotLogs: []
 };
+
+// Link the demo hospital/ambulance records to real seeded owner accounts,
+// once those accounts actually exist (seeding is async). Anything created
+// from here on gets its ownerId set directly at creation time instead.
+seeded.then(() => {
+  const hospitalOwner = findUserByEmail("admin@hindcare-hospital.in");
+  if (hospitalOwner) {
+    db.hospitals[0].ownerId = hospitalOwner.id;
+    const profile = getProfile(hospitalOwner);
+    if (profile) profile.hospitalId = db.hospitals[0].id;
+  }
+
+  const fleetOwner = findUserByEmail("suresh@yadavambulance.in");
+  const driver = findUserByEmail("rahul.singh@fleet.hindcare.in");
+  if (fleetOwner) {
+    db.ambulances[0].ownerId = fleetOwner.id;
+    db.ambulances[1].ownerId = fleetOwner.id;
+  }
+  if (driver) {
+    db.ambulances[0].driverId = driver.id;
+  }
+}).catch(() => {});
 
 const chatSessions = new Map();
 
@@ -430,7 +459,7 @@ async function handleApi(req, res) {
 
   // ----------- Production auth & profile modules -----------
   if (await handleAuthRoutes(req, res, url, parseBody, sendJson)) return;
-  if (await handleProfileRoutes(req, res, url, parseBody, sendJson)) return;
+  if (await handleProfileRoutes(req, res, url, parseBody, sendJson, db)) return;
 
   // ----------- Hospitals -----------
   if (req.method === "GET" && url.pathname === "/api/hospitals") {
@@ -442,6 +471,17 @@ async function handleApi(req, res) {
     return;
   }
   if (req.method === "POST" && url.pathname === "/api/hospitals") {
+    const auth = requireAuth(req, res, sendJson);
+    if (!auth) return;
+    if (auth.user.roleSlug !== "hospital_admin") {
+      sendJson(req, res, 403, { error: "Only a hospital account can register a hospital." });
+      return;
+    }
+    const profile = getProfile(auth.user);
+    if (profile && profile.hospitalId) {
+      sendJson(req, res, 409, { error: "You already have a hospital registered to your account." });
+      return;
+    }
     if (!checkPublicWriteRateLimit(`hospital-signup:${getRequestMeta(req).ip || "unknown"}`)) {
       sendJson(req, res, 429, { error: "Too many requests. Please try again later.", code: "RATE_LIMITED" });
       return;
@@ -457,20 +497,59 @@ async function handleApi(req, res) {
       name: String(body.name).trim().slice(0, 150), city: String(body.city).trim().slice(0, 80), address: String(body.address).trim().slice(0, 250),
       phone: String(body.phone).trim(), email: String(body.email).trim().toLowerCase(),
       emergencyAvailable: Boolean(body.emergencyAvailable ?? true), totalBeds: Number(body.totalBeds || 0),
-      availableBeds: Number(body.availableBeds || 0), status: "pending"
+      availableBeds: Number(body.availableBeds || 0), status: "pending",
+      ownerId: auth.user.id, departments: []
     };
     db.hospitals.push(hospital);
+    if (profile) profile.hospitalId = hospital.id;
     sendJson(req, res, 201, hospital);
     return;
   }
   const hospitalMatch = url.pathname.match(/^\/api\/hospitals\/(\d+)$/);
   if (req.method === "PATCH" && hospitalMatch) {
-    if (!requirePermission(req, res, "hospitals.manage")) return;
+    const auth = requireAuth(req, res, sendJson);
+    if (!auth) return;
     const hospital = db.hospitals.find(h => h.id === Number(hospitalMatch[1]));
     if (!hospital) { sendJson(req, res, 404, { error: "Hospital not found" }); return; }
     const body = await parseBody(req);
-    if (!HOSPITAL_STATUSES.includes(body.status)) { sendJson(req, res, 400, { error: `status must be one of: ${HOSPITAL_STATUSES.join(", ")}` }); return; }
-    hospital.status = body.status;
+
+    // Approving/rejecting a hospital is an admin-only action — never the owner's own call.
+    if (body.status !== undefined) {
+      if (auth.user.roleSlug !== "super_admin") {
+        sendJson(req, res, 403, { error: "Only an administrator can approve or reject a hospital.", code: "FORBIDDEN" });
+        return;
+      }
+      if (!HOSPITAL_STATUSES.includes(body.status)) { sendJson(req, res, 400, { error: `status must be one of: ${HOSPITAL_STATUSES.join(", ")}` }); return; }
+      hospital.status = body.status;
+      sendJson(req, res, 200, hospital);
+      return;
+    }
+
+    // Everything else (beds, departments, contact info) — owner or admin only.
+    const isOwner = auth.user.roleSlug === "hospital_admin" && hospital.ownerId === auth.user.id;
+    if (!isOwner && auth.user.roleSlug !== "super_admin") {
+      sendJson(req, res, 403, { error: "You can only manage your own hospital.", code: "FORBIDDEN" });
+      return;
+    }
+
+    if (body.totalBeds !== undefined) hospital.totalBeds = Math.max(0, Number(body.totalBeds) || 0);
+    if (body.availableBeds !== undefined) hospital.availableBeds = Math.max(0, Math.min(hospital.totalBeds, Number(body.availableBeds) || 0));
+    if (body.emergencyAvailable !== undefined) hospital.emergencyAvailable = Boolean(body.emergencyAvailable);
+    if (body.phone !== undefined) {
+      if (!PHONE_PATTERN.test(String(body.phone).trim())) { sendJson(req, res, 400, { error: "phone must be a valid phone number" }); return; }
+      hospital.phone = String(body.phone).trim();
+    }
+    if (body.address !== undefined) hospital.address = String(body.address).trim().slice(0, 250);
+    if (Array.isArray(body.departments)) {
+      const validStatuses = ["available", "limited", "unavailable"];
+      hospital.departments = body.departments
+        .filter(d => d && String(d.name || "").trim())
+        .slice(0, 30)
+        .map(d => ({
+          name: String(d.name).trim().slice(0, 60),
+          status: validStatuses.includes(d.status) ? d.status : "available"
+        }));
+    }
     sendJson(req, res, 200, hospital);
     return;
   }
@@ -484,6 +563,12 @@ async function handleApi(req, res) {
     return;
   }
   if (req.method === "POST" && url.pathname === "/api/ambulances") {
+    const auth = requireAuth(req, res, sendJson);
+    if (!auth) return;
+    if (auth.user.roleSlug !== "fleet_owner") {
+      sendJson(req, res, 403, { error: "Only a fleet owner account can register an ambulance." });
+      return;
+    }
     if (!checkPublicWriteRateLimit(`ambulance-signup:${getRequestMeta(req).ip || "unknown"}`)) {
       sendJson(req, res, 429, { error: "Too many requests. Please try again later.", code: "RATE_LIMITED" });
       return;
@@ -500,10 +585,11 @@ async function handleApi(req, res) {
       driverName: String(body.driverName).trim().slice(0, 120), phone: String(body.phone).trim(), email: String(body.email).trim().toLowerCase(),
       currentLat: body.currentLat !== undefined ? Number(body.currentLat) : null,
       currentLng: body.currentLng !== undefined ? Number(body.currentLng) : null,
-      // Starts offline, not available: a self-registered ambulance must be
-      // verified and activated by staff before it can be matched to a real
-      // patient booking (SEC-009). Mirrors the hospital "pending" pattern.
-      status: "offline"
+      // Starts offline — the owner (now a real, verified account) switches
+      // it to available once it's actually ready, same safety default as
+      // before, just a self-service step instead of an admin gate.
+      status: "offline",
+      ownerId: auth.user.id, driverId: null
     };
     db.ambulances.push(ambulance);
     sendJson(req, res, 201, ambulance);
@@ -511,12 +597,35 @@ async function handleApi(req, res) {
   }
   const ambulanceMatch = url.pathname.match(/^\/api\/ambulances\/(\d+)$/);
   if (req.method === "PATCH" && ambulanceMatch) {
-    if (!requirePermission(req, res, "ambulances.manage")) return;
+    const auth = requireAuth(req, res, sendJson);
+    if (!auth) return;
     const ambulance = db.ambulances.find(a => a.id === Number(ambulanceMatch[1]));
     if (!ambulance) { sendJson(req, res, 404, { error: "Ambulance not found" }); return; }
+
+    const isOwner = auth.user.roleSlug === "fleet_owner" && ambulance.ownerId === auth.user.id;
+    if (!isOwner && auth.user.roleSlug !== "super_admin") {
+      sendJson(req, res, 403, { error: "You can only manage your own ambulances.", code: "FORBIDDEN" });
+      return;
+    }
+
     const body = await parseBody(req);
-    if (!AMBULANCE_STATUSES.includes(body.status)) { sendJson(req, res, 400, { error: `status must be one of: ${AMBULANCE_STATUSES.join(", ")}` }); return; }
-    ambulance.status = body.status;
+    if (body.status !== undefined) {
+      if (!AMBULANCE_STATUSES.includes(body.status)) { sendJson(req, res, 400, { error: `status must be one of: ${AMBULANCE_STATUSES.join(", ")}` }); return; }
+      ambulance.status = body.status;
+    }
+    if (body.driverId !== undefined) {
+      if (body.driverId === null) {
+        ambulance.driverId = null;
+      } else {
+        const driverProfile = getProfile({ id: Number(body.driverId), roleSlug: "driver" });
+        const isMyDriver = driverProfile && driverProfile.fleetOwnerId === auth.user.id;
+        if (!isMyDriver && auth.user.roleSlug !== "super_admin") {
+          sendJson(req, res, 403, { error: "You can only assign drivers linked to your fleet.", code: "FORBIDDEN" });
+          return;
+        }
+        ambulance.driverId = Number(body.driverId);
+      }
+    }
     sendJson(req, res, 200, ambulance);
     return;
   }
