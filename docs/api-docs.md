@@ -59,11 +59,11 @@ Required JSON fields:
 
 ### `GET /api/bookings`
 
-Returns current bookings.
+Returns all bookings for signed-in staff users. Patient accounts should use `/api/my-bookings`.
 
-### `GET /api/bookings/:id`
+### `GET /api/bookings/lookup`
 
-Returns one booking by ID. This is used by the Phase 2 booking status workflow.
+Looks up one booking by booking ID and phone number. This is safe for public tracking because both values must match.
 
 Example response:
 
@@ -76,6 +76,7 @@ Example response:
   "destination": "HindCare Emergency Hospital",
   "emergencyType": "general",
   "ambulanceId": 1,
+  "assignedDriverId": 6,
   "status": "assigned",
   "notes": "",
   "createdAt": "2026-07-31T06:30:00.000Z"
@@ -95,8 +96,57 @@ Optional JSON fields:
 
 - `pickup`
 - `destination`
+- `hospitalId`
 - `emergencyType`
 - `notes`
+
+### `PATCH /api/bookings/:id`
+
+Updates a booking. Dispatchers and super admins can assign or reassign the ambulance and driver. Staff with booking update permission can move the booking through its lifecycle.
+
+Dispatcher assignment example:
+
+```json
+{
+  "ambulanceId": 1,
+  "assignedDriverId": 6
+}
+```
+
+Status update example:
+
+```json
+{
+  "status": "on_route"
+}
+```
+
+Allowed statuses:
+
+- `requested`
+- `assigned`
+- `on_route`
+- `completed`
+- `cancelled`
+
+## Dispatcher workspace
+
+### `GET /api/profile`
+
+When the signed-in user is a dispatcher, the profile response includes `dispatcherWorkspace`:
+
+```json
+{
+  "dispatcherWorkspace": {
+    "bookings": [],
+    "ambulances": [],
+    "drivers": [],
+    "completedToday": 0
+  }
+}
+```
+
+This powers the Phase 2 dispatch board in `/profile/#/dispatch`.
 
 ## Chatbot
 

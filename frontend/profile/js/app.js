@@ -38,7 +38,7 @@ const COMMON_NAV = [
 
 const ROLE_NAV = {
   driver: [{ id: "documents", label: "Documents", icon: "file" }],
-  dispatcher: [],
+  dispatcher: [{ id: "dispatch", label: "Dispatch", icon: "activity" }],
   hospital_admin: [
     { id: "hospital", label: "My Hospital", icon: "hospital" },
     { id: "activity", label: "Activity Log", icon: "activity" }
@@ -60,6 +60,7 @@ const PAGE_TITLES = {
   contacts: "Emergency Contacts",
   addresses: "Addresses",
   documents: "Documents",
+  dispatch: "Dispatch",
   activity: "Activity Log",
   system: "System",
   hospital: "My Hospital",
@@ -170,6 +171,7 @@ const RENDERERS = {
   contacts: renderContacts,
   addresses: renderAddresses,
   documents: renderDocuments,
+  dispatch: renderDispatch,
   activity: renderActivity,
   system: renderSystem,
   hospital: renderHospital,
@@ -238,7 +240,13 @@ async function renderOverview(el) {
         </div>
       </div>` : ""}`;
   } else if (role === "dispatcher") {
-    statsHtml = statCard(profile.callsHandled, "Calls handled") + statCard(profile.avgResponseSeconds, "Avg. response (s)") + statCard(`${profile.shiftStart}–${profile.shiftEnd}`, "Shift");
+    const workspace = data.dispatcherWorkspace || {};
+    const dispatchBookings = workspace.bookings || [];
+    const ambulances = workspace.ambulances || [];
+    statsHtml = statCard(dispatchBookings.filter(b => b.status === "requested").length, "New requests")
+      + statCard(dispatchBookings.filter(b => ["assigned", "on_route"].includes(b.status)).length, "Active trips")
+      + statCard(ambulances.filter(a => a.status === "available").length, "Ambulances free")
+      + statCard(workspace.completedToday || 0, "Completed today");
     extraCard = `
       <div class="profile-card">
         <div class="profile-card-header"><h2>Live status</h2></div>
@@ -248,6 +256,13 @@ async function renderOverview(el) {
               <button type="button" class="status-chip ${s === "online" ? "available" : s === "offline" ? "busy" : ""} ${profile.liveStatus === s ? "active" : ""}" data-status="${s}">${s.replace("_", " ")}</button>
             `).join("")}
           </div>
+        </div>
+      </div>
+      <div class="profile-card">
+        <div class="profile-card-header"><h2>Dispatch workspace</h2></div>
+        <div class="profile-card-body">
+          <p class="info-label" style="margin-bottom:1rem;">Assign ambulances and real driver accounts to requests from one place.</p>
+          <button type="button" class="md-btn md-btn-filled" id="open-dispatch-btn">Open dispatch board</button>
         </div>
       </div>`;
   } else if (role === "hospital_admin") {
@@ -304,6 +319,10 @@ async function renderOverview(el) {
     } catch (err) {
       toast(err.message, "error");
     }
+  });
+
+  document.getElementById("open-dispatch-btn")?.addEventListener("click", () => {
+    window.location.hash = "#/dispatch";
   });
 }
 
@@ -654,6 +673,189 @@ function renderDocuments(el) {
       </div>
     </div>
   `;
+}
+
+// ---------------------------------------------------------------------
+// Dispatch workspace (dispatcher)
+// ---------------------------------------------------------------------
+const DISPATCH_NEXT_STATUSES = {
+  requested: ["assigned", "cancelled"],
+  assigned: ["on_route", "cancelled"],
+  on_route: ["completed", "cancelled"],
+  completed: [],
+  cancelled: []
+};
+
+const STATUS_TEXT = {
+  requested: "Requested",
+  assigned: "Assigned",
+  on_route: "On route",
+  completed: "Completed",
+  cancelled: "Cancelled",
+  available: "Available",
+  busy: "Busy",
+  maintenance: "Maintenance",
+  offline: "Offline",
+  on_break: "On break"
+};
+
+function prettyStatus(status) {
+  return STATUS_TEXT[status] || String(status || "unknown").replaceAll("_", " ");
+}
+
+function renderDispatch(el) {
+  const workspace = data.dispatcherWorkspace || {};
+  const bookings = workspace.bookings || [];
+  const ambulances = workspace.ambulances || [];
+  const drivers = workspace.drivers || [];
+  const activeTrips = bookings.filter(b => ["assigned", "on_route"].includes(b.status));
+  const newRequests = bookings.filter(b => b.status === "requested");
+
+  el.innerHTML = `
+    <div class="profile-card full-width dispatch-hero">
+      <div class="profile-card-body">
+        <div class="stats-grid">
+          ${statCard(newRequests.length, "Waiting requests")}
+          ${statCard(activeTrips.length, "Active trips")}
+          ${statCard(ambulances.filter(a => a.status === "available").length, "Ambulances free")}
+          ${statCard(drivers.filter(d => d.availabilityStatus === "available").length, "Drivers free")}
+        </div>
+      </div>
+    </div>
+
+    <div class="dispatch-grid full-width">
+      <div class="profile-card">
+        <div class="profile-card-header">
+          <h2>Requests and active trips</h2>
+          <button type="button" class="md-btn md-btn-outlined" id="dispatch-refresh-btn">Refresh</button>
+        </div>
+        <div class="profile-card-body dispatch-board">
+          ${bookings.length ? bookings.map(booking => dispatchBookingCard(booking, ambulances, drivers)).join("") : '<div class="empty-state-card">No active requests right now.</div>'}
+        </div>
+      </div>
+
+      <aside class="dispatch-side">
+        <div class="profile-card">
+          <div class="profile-card-header"><h2>Ambulances</h2></div>
+          <div class="profile-card-body compact-list">
+            ${ambulances.length ? ambulances.map(a => `
+              <div class="compact-row">
+                <div>
+                  <strong>${escapeHtml(a.registrationNumber)}</strong>
+                  <span>${escapeHtml(a.type)} · ${escapeHtml(a.driverName || "No driver")}</span>
+                </div>
+                <span class="status-chip ${a.status === "available" ? "available active" : a.status === "busy" ? "busy active" : ""}">${escapeHtml(prettyStatus(a.status))}</span>
+              </div>
+            `).join("") : '<div class="empty-state-card">No ambulances in fleet.</div>'}
+          </div>
+        </div>
+
+        <div class="profile-card">
+          <div class="profile-card-header"><h2>Drivers</h2></div>
+          <div class="profile-card-body compact-list">
+            ${drivers.length ? drivers.map(d => `
+              <div class="compact-row">
+                <div>
+                  <strong>${escapeHtml(d.fullName)}</strong>
+                  <span>${escapeHtml(d.phone || "")}</span>
+                </div>
+                <span class="status-chip ${d.availabilityStatus === "available" ? "available active" : d.availabilityStatus === "busy" ? "busy active" : ""}">${escapeHtml(prettyStatus(d.availabilityStatus))}</span>
+              </div>
+            `).join("") : '<div class="empty-state-card">No driver accounts yet.</div>'}
+          </div>
+        </div>
+      </aside>
+    </div>
+  `;
+
+  document.getElementById("dispatch-refresh-btn")?.addEventListener("click", refreshProfileData);
+
+  el.querySelectorAll("[data-dispatch-assign]").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const card = btn.closest("[data-booking-id]");
+      const bookingId = card.dataset.bookingId;
+      const ambulanceId = card.querySelector("[data-dispatch-ambulance]").value;
+      const assignedDriverId = card.querySelector("[data-dispatch-driver]").value;
+
+      try {
+        await profileApi(`/api/bookings/${bookingId}`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            ambulanceId: ambulanceId ? Number(ambulanceId) : null,
+            assignedDriverId: assignedDriverId ? Number(assignedDriverId) : null
+          })
+        });
+        toast("Trip assignment updated", "success");
+        await refreshProfileData();
+      } catch (err) {
+        toast(err.message, "error");
+      }
+    });
+  });
+
+  el.querySelectorAll("[data-dispatch-status]").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      try {
+        await profileApi(`/api/bookings/${btn.dataset.bookingId}`, {
+          method: "PATCH",
+          body: JSON.stringify({ status: btn.dataset.dispatchStatus })
+        });
+        toast("Trip status updated", "success");
+        await refreshProfileData();
+      } catch (err) {
+        toast(err.message, "error");
+      }
+    });
+  });
+}
+
+function dispatchBookingCard(booking, ambulances, drivers) {
+  const nextStatuses = DISPATCH_NEXT_STATUSES[booking.status] || [];
+  return `
+    <article class="dispatch-card" data-booking-id="${booking.id}">
+      <div class="dispatch-card-head">
+        <div>
+          <strong>Booking #${escapeHtml(booking.id)}</strong>
+          <span>${escapeHtml(booking.patientName)} · ${escapeHtml(booking.phone)}</span>
+        </div>
+        <span class="status-chip ${booking.status === "requested" ? "busy active" : booking.status === "assigned" || booking.status === "on_route" ? "available active" : ""}">${escapeHtml(prettyStatus(booking.status))}</span>
+      </div>
+
+      <div class="dispatch-route">
+        <div><span>Pickup</span><strong>${escapeHtml(booking.pickup)}</strong></div>
+        <div><span>Destination</span><strong>${escapeHtml(booking.destination)}</strong></div>
+      </div>
+
+      <div class="dispatch-controls">
+        <label>
+          Ambulance
+          <select class="md-input" data-dispatch-ambulance>
+            <option value="">No ambulance</option>
+            ${ambulances.map(a => `<option value="${a.id}" ${booking.ambulanceId === a.id ? "selected" : ""}>${escapeHtml(a.registrationNumber)} · ${escapeHtml(prettyStatus(a.status))}</option>`).join("")}
+          </select>
+        </label>
+        <label>
+          Driver
+          <select class="md-input" data-dispatch-driver>
+            <option value="">No driver</option>
+            ${drivers.map(d => `<option value="${d.id}" ${booking.assignedDriverId === d.id ? "selected" : ""}>${escapeHtml(d.fullName)} · ${escapeHtml(prettyStatus(d.availabilityStatus))}</option>`).join("")}
+          </select>
+        </label>
+        <button type="button" class="md-btn md-btn-filled" data-dispatch-assign>Assign</button>
+      </div>
+
+      ${nextStatuses.length ? `
+        <div class="dispatch-actions">
+          ${nextStatuses.map(status => `<button type="button" class="md-btn md-btn-outlined" data-booking-id="${booking.id}" data-dispatch-status="${status}">${escapeHtml(prettyStatus(status))}</button>`).join("")}
+        </div>
+      ` : ""}
+    </article>
+  `;
+}
+
+async function refreshProfileData() {
+  data = await profileApi("/api/profile");
+  renderRoute();
 }
 
 // ---------------------------------------------------------------------

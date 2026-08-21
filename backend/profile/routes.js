@@ -290,10 +290,25 @@ function getRelatedData(userId, roleSlug, db) {
     if (db) {
       const myAmbulance = db.ambulances.find(a => a.driverId === userId) || null;
       data.assignedAmbulance = myAmbulance;
-      data.activeBooking = myAmbulance
-        ? db.bookings.find(b => b.ambulanceId === myAmbulance.id && ["assigned", "on_route"].includes(b.status)) || null
-        : null;
+      data.activeBooking = db.bookings.find(b =>
+        ["assigned", "on_route"].includes(b.status) &&
+        (b.assignedDriverId === userId || (myAmbulance && b.ambulanceId === myAmbulance.id))
+      ) || null;
     }
+  }
+
+  if (roleSlug === "dispatcher" && db) {
+    const activeStatuses = ["requested", "assigned", "on_route"];
+    const dispatchBookings = db.bookings
+      .filter(b => activeStatuses.includes(b.status))
+      .slice()
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    data.dispatcherWorkspace = {
+      bookings: dispatchBookings.map(booking => enrichBookingForWorkspace(booking, db)),
+      ambulances: db.ambulances.map(ambulance => enrichAmbulanceForWorkspace(ambulance)),
+      drivers: store.driverProfiles.map(profile => enrichDriverForWorkspace(profile)),
+      completedToday: db.bookings.filter(b => b.status === "completed" && isToday(b.updatedAt || b.createdAt)).length
+    };
   }
 
   if (roleSlug === "fleet_owner" && db) {
@@ -331,6 +346,55 @@ function getRelatedData(userId, roleSlug, db) {
   }
 
   return data;
+}
+
+function isToday(value) {
+  const date = new Date(value);
+  const now = new Date();
+  return date.toDateString() === now.toDateString();
+}
+
+function enrichDriverForWorkspace(profile) {
+  if (!profile || !profile.userId) return null;
+  const user = findUserById(profile.userId);
+  return {
+    id: profile.userId,
+    fullName: profile.fullName,
+    phone: user ? user.phone : null,
+    availabilityStatus: profile.availabilityStatus,
+    fleetOwnerId: profile.fleetOwnerId || null
+  };
+}
+
+function enrichAmbulanceForWorkspace(ambulance) {
+  const driver = ambulance.driverId
+    ? enrichDriverForWorkspace(store.driverProfiles.find(p => p.userId === ambulance.driverId))
+    : null;
+  return {
+    id: ambulance.id,
+    registrationNumber: ambulance.registrationNumber,
+    type: ambulance.type,
+    status: ambulance.status,
+    currentLat: ambulance.currentLat,
+    currentLng: ambulance.currentLng,
+    driverId: ambulance.driverId || null,
+    driverName: driver?.fullName || ambulance.driverName || "Unassigned"
+  };
+}
+
+function enrichBookingForWorkspace(booking, db) {
+  const ambulance = booking.ambulanceId ? db.ambulances.find(a => a.id === booking.ambulanceId) : null;
+  const driverProfile = booking.assignedDriverId
+    ? store.driverProfiles.find(p => p.userId === booking.assignedDriverId)
+    : ambulance?.driverId
+      ? store.driverProfiles.find(p => p.userId === ambulance.driverId)
+      : null;
+  const driver = driverProfile ? enrichDriverForWorkspace(driverProfile) : null;
+  return {
+    ...booking,
+    ambulance: ambulance ? enrichAmbulanceForWorkspace(ambulance) : null,
+    driver
+  };
 }
 
 function getEditableFields(roleSlug) {

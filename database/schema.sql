@@ -3,7 +3,7 @@ CREATE TABLE users (
   full_name VARCHAR(120) NOT NULL,
   phone VARCHAR(20) NOT NULL UNIQUE,
   email VARCHAR(160) UNIQUE,
-  role VARCHAR(30) NOT NULL CHECK (role IN ('patient', 'hospital_admin', 'fleet_owner', 'admin')),
+  role VARCHAR(30) NOT NULL CHECK (role IN ('patient', 'driver', 'dispatcher', 'hospital_admin', 'fleet_owner', 'admin', 'super_admin')),
   password_hash TEXT,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -43,6 +43,7 @@ CREATE TABLE bookings (
   destination TEXT NOT NULL,
   emergency_type VARCHAR(80),
   ambulance_id BIGINT REFERENCES ambulances(id),
+  assigned_driver_id BIGINT REFERENCES users(id),
   hospital_id BIGINT REFERENCES hospitals(id),
   status VARCHAR(30) NOT NULL DEFAULT 'requested' CHECK (status IN ('requested', 'assigned', 'on_route', 'completed', 'cancelled')),
   notes TEXT,
