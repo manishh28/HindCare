@@ -334,6 +334,89 @@
 .status-chip.available.active { background: var(--md-sys-color-success-container); color: var(--md-sys-color-success); }
 .status-chip.busy.active { background: var(--md-sys-color-error-container); color: var(--md-sys-color-error); }
 
+/* Dispatcher workspace */
+.dispatch-grid {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 1.5rem;
+}
+
+.dispatch-side {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.dispatch-board,
+.compact-list {
+  display: grid;
+  gap: 1rem;
+}
+
+.dispatch-card {
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-large);
+  padding: 1rem;
+  background: var(--md-sys-color-surface);
+}
+
+.dispatch-card-head,
+.compact-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.dispatch-card-head strong,
+.compact-row strong {
+  display: block;
+  font: var(--md-sys-typescale-title-small);
+}
+
+.dispatch-card-head span,
+.compact-row span,
+.dispatch-route span,
+.dispatch-controls label {
+  font: var(--md-sys-typescale-body-small);
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.dispatch-route {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin: 1rem 0;
+}
+
+.dispatch-route strong {
+  display: block;
+  margin-top: 0.25rem;
+  font: var(--md-sys-typescale-body-medium);
+}
+
+.dispatch-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 0.75rem;
+}
+
+.dispatch-controls label {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.dispatch-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--md-sys-color-outline-variant);
+}
+
 /* Mobile sidebar toggle */
 .mobile-nav-toggle {
   display: none;
@@ -366,6 +449,13 @@
   .mobile-nav-toggle { display: block; }
   .profile-content { padding: 1rem; }
   .profile-header { padding: 0 1rem; }
+  .dispatch-grid {
+    grid-template-columns: 1fr;
+  }
+  .dispatch-controls,
+  .dispatch-route {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* Edit mode */

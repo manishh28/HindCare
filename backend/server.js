@@ -49,7 +49,7 @@ const { handleMessage, emptySession } = require("../chatbot/chatbot");
 const { handleAuthRoutes } = require("./auth/routes");
 const { handleProfileRoutes } = require("./profile/routes");
 const { authenticate, requireAuth, getRequestMeta } = require("./auth/middleware");
-const { ROLE_PERMISSIONS, findUserByEmail, getProfile, seeded } = require("./auth/store");
+const { ROLE_PERMISSIONS, findUserByEmail, findUserById, getProfile, store, seeded } = require("./auth/store");
 
 // Rate limiting for the public write endpoints below (hospital/ambulance
 // onboarding, booking creation) — mirrors the same pattern already used in
@@ -301,6 +301,32 @@ function findBestAmbulance(pickupText) {
   return best ? { ambulance: best, distanceKm: Math.round(bestDistance * 10) / 10 } : { ambulance: available[0], distanceKm: null };
 }
 
+function isActiveBookingStatus(status) {
+  return ["requested", "assigned", "on_route"].includes(status);
+}
+
+function driverOption(userId) {
+  const user = findUserById(userId);
+  if (!user || user.roleSlug !== "driver") return null;
+  const profile = getProfile(user);
+  if (!profile) return null;
+  return {
+    id: user.id,
+    fullName: profile.fullName,
+    phone: user.phone,
+    availabilityStatus: profile.availabilityStatus
+  };
+}
+
+function bookingPublicDriver(booking) {
+  if (booking.assignedDriverId) {
+    const driver = driverOption(booking.assignedDriverId);
+    if (driver) return { fullName: driver.fullName };
+  }
+  const amb = booking.ambulanceId ? db.ambulances.find(a => a.id === booking.ambulanceId) : null;
+  return amb && amb.driverName ? { fullName: amb.driverName } : null;
+}
+
 function createBooking(body, customerId = null) {
   const missing = requireFields(body, ["patientName", "phone", "pickup"]);
   if (!String(body.destination || "").trim() && !body.hospitalId) missing.push("destination");
@@ -321,6 +347,7 @@ function createBooking(body, customerId = null) {
   }
 
   const { ambulance, distanceKm } = findBestAmbulance(body.pickup);
+  const assignedDriverId = ambulance && ambulance.driverId ? ambulance.driverId : null;
   const booking = {
     id: nextId(db.bookings),
     patientName: String(body.patientName).trim().slice(0, 120),
@@ -331,6 +358,7 @@ function createBooking(body, customerId = null) {
     customerId,
     emergencyType,
     ambulanceId: ambulance ? ambulance.id : null,
+    assignedDriverId,
     dispatchDistanceKm: distanceKm,
     status: ambulance ? "assigned" : "requested",
     notes: body.notes ? String(body.notes).trim().slice(0, 500) : "",
@@ -650,7 +678,8 @@ async function handleApi(req, res) {
     sendJson(req, res, 200, {
       id: booking.id, status: booking.status, destination: booking.destination,
       dispatchDistanceKm: booking.dispatchDistanceKm,
-      ambulance: amb ? { registrationNumber: amb.registrationNumber, driverName: amb.driverName } : null
+      ambulance: amb ? { registrationNumber: amb.registrationNumber, driverName: amb.driverName } : null,
+      driver: bookingPublicDriver(booking)
     });
     return;
   }
@@ -689,23 +718,88 @@ async function handleApi(req, res) {
 
     const body = await parseBody(req);
     const nextStatus = body.status;
-    if (!BOOKING_STATUSES.includes(nextStatus)) { sendJson(req, res, 400, { error: `status must be one of: ${BOOKING_STATUSES.join(", ")}` }); return; }
+    const hasStatusUpdate = nextStatus !== undefined;
+    const hasDispatchUpdate = body.ambulanceId !== undefined || body.assignedDriverId !== undefined;
+
+    if (!hasStatusUpdate && !hasDispatchUpdate) {
+      sendJson(req, res, 400, { error: "Send a status, ambulanceId, or assignedDriverId to update this booking." });
+      return;
+    }
+    if (hasStatusUpdate && !BOOKING_STATUSES.includes(nextStatus)) {
+      sendJson(req, res, 400, { error: `status must be one of: ${BOOKING_STATUSES.join(", ")}` });
+      return;
+    }
 
     const perms = ROLE_PERMISSIONS[auth.user.roleSlug] || [];
     const isStaffManager = perms.includes("bookings.update");
+    const canDispatch = perms.includes("bookings.dispatch");
     const isOwnerCancelling = auth.user.roleSlug === "customer" && booking.customerId === auth.user.id && nextStatus === "cancelled";
-    if (!isStaffManager && !isOwnerCancelling) {
+    const isAssignedDriver = auth.user.roleSlug === "driver" && booking.assignedDriverId === auth.user.id;
+    const canUpdateStatus = auth.user.roleSlug === "driver" ? isAssignedDriver : isStaffManager;
+
+    if (hasDispatchUpdate && !canDispatch) {
+      sendJson(req, res, 403, { error: "You don't have permission to assign ambulances or drivers.", code: "FORBIDDEN" });
+      return;
+    }
+    if (hasStatusUpdate && !canUpdateStatus && !isOwnerCancelling) {
       sendJson(req, res, 403, { error: "You don't have permission to update this booking.", code: "FORBIDDEN" });
       return;
     }
 
-    if (!BOOKING_TRANSITIONS[booking.status].includes(nextStatus)) {
-      sendJson(req, res, 409, { error: `Cannot move a booking from "${booking.status}" to "${nextStatus}".`, allowedNext: BOOKING_TRANSITIONS[booking.status] });
-      return;
+    if (hasDispatchUpdate) {
+      let nextAmbulance = booking.ambulanceId ? db.ambulances.find(a => a.id === booking.ambulanceId) : null;
+      if (body.ambulanceId !== undefined) {
+        if (body.ambulanceId === null || body.ambulanceId === "") {
+          nextAmbulance = null;
+        } else {
+          nextAmbulance = db.ambulances.find(a => a.id === Number(body.ambulanceId));
+          if (!nextAmbulance) { sendJson(req, res, 400, { error: "ambulanceId does not match a known ambulance" }); return; }
+        }
+      }
+
+      let nextDriverId = booking.assignedDriverId || null;
+      if (body.assignedDriverId !== undefined) {
+        if (body.assignedDriverId === null || body.assignedDriverId === "") {
+          nextDriverId = null;
+        } else {
+          const driver = driverOption(Number(body.assignedDriverId));
+          if (!driver) { sendJson(req, res, 400, { error: "assignedDriverId must match a real driver account" }); return; }
+          nextDriverId = driver.id;
+        }
+      } else if (nextAmbulance && nextAmbulance.driverId) {
+        nextDriverId = nextAmbulance.driverId;
+      }
+
+      if (nextAmbulance && nextDriverId && nextAmbulance.driverId && nextAmbulance.driverId !== nextDriverId) {
+        sendJson(req, res, 400, { error: "Selected driver is not linked to the selected ambulance." });
+        return;
+      }
+
+      if (booking.ambulanceId && booking.ambulanceId !== nextAmbulance?.id) {
+        const previousAmbulance = db.ambulances.find(a => a.id === booking.ambulanceId);
+        if (previousAmbulance && previousAmbulance.status === "busy") previousAmbulance.status = "available";
+      }
+      if (nextAmbulance && isActiveBookingStatus(booking.status)) {
+        nextAmbulance.status = "busy";
+      }
+
+      booking.ambulanceId = nextAmbulance ? nextAmbulance.id : null;
+      booking.assignedDriverId = nextDriverId;
+      if (booking.status === "requested" && (booking.ambulanceId || booking.assignedDriverId)) {
+        booking.status = "assigned";
+      }
     }
-    booking.status = nextStatus;
+
+    if (hasStatusUpdate) {
+      if (!BOOKING_TRANSITIONS[booking.status].includes(nextStatus)) {
+        sendJson(req, res, 409, { error: `Cannot move a booking from "${booking.status}" to "${nextStatus}".`, allowedNext: BOOKING_TRANSITIONS[booking.status] });
+        return;
+      }
+      booking.status = nextStatus;
+    }
+
     booking.updatedAt = new Date().toISOString();
-    if ((nextStatus === "completed" || nextStatus === "cancelled") && booking.ambulanceId) {
+    if ((booking.status === "completed" || booking.status === "cancelled") && booking.ambulanceId) {
       const ambulance = db.ambulances.find(a => a.id === booking.ambulanceId);
       if (ambulance && ambulance.status === "busy") ambulance.status = "available";
     }
