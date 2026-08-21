@@ -382,7 +382,14 @@ document.getElementById("booking-form").addEventListener("submit", async event =
     const ambulanceNote = booking.ambulanceId
       ? `Ambulance ${state.ambulances.find(a => a.id === booking.ambulanceId)?.registrationNumber || booking.ambulanceId} is on the way${booking.dispatchDistanceKm != null ? ` (~${booking.dispatchDistanceKm} km out)` : ""}.`
       : "No ambulance is free right now — you're first in line for the next one.";
-    result.textContent = `Booking #${booking.id} confirmed. ${ambulanceNote}`;
+    const bookingPhone = form.phone.value;
+    result.innerHTML = `<span>Booking #${escapeHtml(booking.id)} confirmed. ${escapeHtml(ambulanceNote)}</span><button type="button" class="track-confirmed-booking" id="track-confirmed-booking">View demo tracking map</button>`;
+    document.getElementById("track-confirmed-booking").addEventListener("click", () => {
+      document.getElementById("booking-track-id").value = booking.id;
+      document.querySelector("#tracker-form input[name=phone]").value = bookingPhone;
+      document.getElementById("tracker-form").scrollIntoView({ behavior: "smooth", block: "center" });
+      document.getElementById("tracker-form").requestSubmit();
+    });
     form.reset();
     state.destinationManuallySet = false;
     await Promise.all([refreshBookings(), refreshAmbulances()]);
@@ -507,6 +514,64 @@ function estimatedArrivalMinutes(distanceKm) {
   return Math.max(1, Math.round((distanceKm / assumedSpeedKmh) * 60));
 }
 
+let trackingSimulationTimer = null;
+
+function trackingPoint(lat, lng) {
+  if (!Number.isFinite(Number(lat)) || !Number.isFinite(Number(lng))) return null;
+  const x = Math.max(4, Math.min(96, ((Number(lng) - 80.90) / 0.10) * 100));
+  const y = Math.max(4, Math.min(96, (1 - (Number(lat) - 26.80) / 0.09) * 100));
+  return { x, y };
+}
+
+function renderTrackingMap(booking) {
+  const pickup = trackingPoint(booking.pickupLat, booking.pickupLng);
+  const destination = trackingPoint(booking.destinationLat, booking.destinationLng);
+  const ambulance = booking.ambulance ? trackingPoint(booking.ambulance.currentLat, booking.ambulance.currentLng) : null;
+  if (!pickup && !destination && !ambulance) return "";
+
+  const lineStart = ambulance || pickup || destination;
+  const lineEnd = pickup || destination || ambulance;
+  return `
+    <div class="tracking-map-wrap">
+      <div class="tracking-map" id="tracking-map" role="img" aria-label="Demo ambulance route map">
+        <div class="map-grid-lines" aria-hidden="true"></div>
+        <div class="map-label map-label-north">LUCKNOW DEMO AREA</div>
+        <svg class="tracking-route" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+          <line id="tracking-route-line" x1="${lineStart.x}" y1="${lineStart.y}" x2="${lineEnd.x}" y2="${lineEnd.y}" />
+        </svg>
+        ${destination ? `<span class="tracking-marker hospital-marker" style="left:${destination.x}%;top:${destination.y}%" title="Hospital destination" aria-label="Hospital destination">✚</span>` : ""}
+        ${pickup ? `<span class="tracking-marker pickup-marker" style="left:${pickup.x}%;top:${pickup.y}%" title="Pickup location" aria-label="Pickup location">●</span>` : ""}
+        ${ambulance ? `<span class="tracking-marker ambulance-marker" id="tracking-ambulance-marker" style="left:${ambulance.x}%;top:${ambulance.y}%" title="Ambulance location" aria-label="Ambulance location">🚑</span>` : ""}
+      </div>
+      <div class="tracking-map-legend"><span><i class="legend-dot ambulance-legend"></i> Ambulance</span><span><i class="legend-dot pickup-legend"></i> Pickup</span><span><i class="legend-dot hospital-legend"></i> Hospital</span></div>
+      <p class="tracking-demo-note">Demo map only — movement is simulated and is not live GPS tracking.</p>
+    </div>`;
+}
+
+function startTrackingSimulation(booking) {
+  clearInterval(trackingSimulationTimer);
+  if (!booking.ambulance || !Number.isFinite(Number(booking.ambulance.currentLat)) || !Number.isFinite(Number(booking.pickupLat))) return;
+  if (["completed", "cancelled"].includes(booking.status)) return;
+
+  const start = { lat: Number(booking.ambulance.currentLat), lng: Number(booking.ambulance.currentLng) };
+  const end = { lat: Number(booking.pickupLat), lng: Number(booking.pickupLng) };
+  let progress = 0;
+  trackingSimulationTimer = setInterval(() => {
+    progress = Math.min(1, progress + 0.08);
+    const current = {
+      lat: start.lat + (end.lat - start.lat) * progress,
+      lng: start.lng + (end.lng - start.lng) * progress
+    };
+    const point = trackingPoint(current.lat, current.lng);
+    const marker = document.getElementById("tracking-ambulance-marker");
+    if (marker && point) {
+      marker.style.left = `${point.x}%`;
+      marker.style.top = `${point.y}%`;
+    }
+    if (progress >= 1) clearInterval(trackingSimulationTimer);
+  }, 1800);
+}
+
 document.getElementById("tracker-form").addEventListener("submit", async event => {
   event.preventDefault();
   const { bookingId, phone } = formToObject(event.currentTarget);
@@ -519,6 +584,7 @@ document.getElementById("tracker-form").addEventListener("submit", async event =
     const showEta = eta != null && !["completed", "cancelled"].includes(booking.status);
 
     result.innerHTML = `
+      ${renderTrackingMap(booking)}
       <div class="tracker-row"><span>Status</span>${statusChip(booking.status)}</div>
       <div class="tracker-row"><span>Destination</span><span>${escapeHtml(booking.destination)}</span></div>
       ${booking.ambulance
@@ -527,7 +593,9 @@ document.getElementById("tracker-form").addEventListener("submit", async event =
         : `<div class="tracker-row"><span>Ambulance</span><span>Not yet assigned</span></div>`}
       ${showEta ? `<div class="tracker-row"><span>Est. arrival</span><span>~${Number(eta)} min (approx.)</span></div>` : ""}
     `;
+    startTrackingSimulation(booking);
   } catch (error) {
+    clearInterval(trackingSimulationTimer);
     result.innerHTML = `<p>${escapeHtml(error.message)}</p>`;
   }
 });

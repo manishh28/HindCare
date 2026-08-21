@@ -1,8 +1,8 @@
 # HindCare Hospital and Ambulance Aggregator
 
-HindCare is a Phase 3 emergency healthcare platform prototype that connects patients with hospitals and ambulance operators — designed like consumer ambulance-booking services (Medulance, RED.Health, Medicab, etc.): **booking an ambulance is the primary action**, with self-service accounts and role-based operational dashboards.
+HindCare is a Phase 4 emergency healthcare platform prototype that connects patients with hospitals and ambulance operators — designed like consumer ambulance-booking services (Medulance, RED.Health, Medicab, etc.): **booking an ambulance is the primary action**, with self-service accounts, role-based operational dashboards, and a local tracking simulation.
 
-> **Current status:** Phase 3 prototype using fictional, in-memory demo data. This is not a live emergency service and does not connect to real hospitals, ambulance fleets, GPS services, or patient records. In a real emergency, call your local emergency number (e.g. **108** in India).
+> **Current status:** Phase 4 prototype using fictional, in-memory demo data. The tracking map is simulated and does not provide live GPS. This is not a live emergency service and does not connect to real hospitals, ambulance fleets, GPS services, or patient records. In a real emergency, call your local emergency number (e.g. **108** in India).
 
 ## Platform surfaces
 
@@ -22,6 +22,7 @@ The app is split into three entry points:
 - **Real authorization.** Protected API routes use JWT sessions and role-based permissions — not a client-side role switcher.
 - **Dispatcher workspace.** Dispatchers can view active requests, see ambulances and drivers, assign or reassign trips, and move bookings through the active trip lifecycle.
 - **Hospital sub-roles.** Hospital owners can create Doctor, Reception, and Staff accounts. Each role receives a narrower hospital view and permission set.
+- **Local tracking simulation.** A booking lookup shows pickup, hospital, and ambulance markers with simulated ambulance movement. It is not live GPS.
 - **Honest demo data.** Stats (fleet ready, hospitals in network, avg. dispatch distance) are computed live from in-memory data, not invented marketing numbers.
 
 ## User roles
