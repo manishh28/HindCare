@@ -278,6 +278,7 @@ function recordLoginAttempt(userId, success, method, meta = {}) {
     failureReason: meta.failureReason || null,
     createdAt: new Date().toISOString()
   });
+  if (store.loginHistory.length > 10000) store.loginHistory.splice(0, store.loginHistory.length - 10000);
 }
 
 function recordAudit(userId, action, resourceType, resourceId, meta = {}) {
@@ -292,6 +293,7 @@ function recordAudit(userId, action, resourceType, resourceId, meta = {}) {
     metadata: meta.metadata || {},
     createdAt: new Date().toISOString()
   });
+  if (store.auditLogs.length > 10000) store.auditLogs.splice(0, store.auditLogs.length - 10000);
 }
 
 async function registerFailedLogin(user) {
@@ -327,6 +329,7 @@ function createOtp({ userId, channel, destination, purpose }) {
     _plainOtp: otp
   };
   store.otps.push(record);
+  if (store.otps.length > 5000) store.otps.splice(0, store.otps.length - 5000);
   return record;
 }
 
@@ -379,6 +382,9 @@ function createSession(userId, meta = {}) {
     _plainRefreshToken: refreshToken
   };
   store.sessions.push(session);
+  if (store.sessions.length > 5000) {
+    store.sessions = store.sessions.filter(s => !s.revokedAt && new Date(s.expiresAt) > new Date()).slice(-5000);
+  }
   return session;
 }
 

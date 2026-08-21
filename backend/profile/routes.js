@@ -130,12 +130,19 @@ async function handleProfileRoutes(req, res, url, parseBody, sendJson, db) {
     if (!auth) return true;
 
     const body = await parseBody(req);
+    const contactName = String(body.name || "").trim();
+    const relationship = String(body.relationship || "").trim();
+    const contactPhone = String(body.phone || "").trim();
+    if (!contactName || !relationship || !validatePhone(contactPhone)) {
+      sendJson(req, res, 400, { error: "Name, relationship, and a valid phone number are required." });
+      return true;
+    }
     const contact = {
       id: nextEmergencyId(),
       userId: auth.user.id,
-      name: String(body.name).trim(),
-      relationship: String(body.relationship).trim(),
-      phone: String(body.phone).trim(),
+      name: contactName.slice(0, 120),
+      relationship: relationship.slice(0, 80),
+      phone: contactPhone,
       isPrimary: Boolean(body.isPrimary)
     };
     store.emergencyContacts.push(contact);
@@ -156,18 +163,26 @@ async function handleProfileRoutes(req, res, url, parseBody, sendJson, db) {
     if (!auth) return true;
 
     const body = await parseBody(req);
+    const line1 = String(body.line1 || "").trim();
+    const city = String(body.city || "").trim();
+    const state = String(body.state || "").trim();
+    const pincode = String(body.pincode || "").trim();
+    if (!line1 || !city || !state || !/^\d{4,10}$/.test(pincode)) {
+      sendJson(req, res, 400, { error: "Address, city, state, and a valid pincode are required." });
+      return true;
+    }
     const address = {
       id: nextAddressId(),
       userId: auth.user.id,
-      label: body.label || "home",
-      line1: String(body.line1).trim(),
-      line2: body.line2 || null,
-      city: String(body.city).trim(),
-      state: String(body.state).trim(),
-      pincode: String(body.pincode).trim(),
-      country: body.country || "India",
-      lat: body.lat || null,
-      lng: body.lng || null,
+      label: String(body.label || "home").trim().slice(0, 40),
+      line1: line1.slice(0, 250),
+      line2: String(body.line2 || "").trim().slice(0, 250) || null,
+      city: city.slice(0, 80),
+      state: state.slice(0, 80),
+      pincode,
+      country: String(body.country || "India").trim().slice(0, 80),
+      lat: Number.isFinite(Number(body.lat)) ? Number(body.lat) : null,
+      lng: Number.isFinite(Number(body.lng)) ? Number(body.lng) : null,
       isDefault: Boolean(body.isDefault),
       createdAt: new Date().toISOString()
     };
@@ -195,7 +210,11 @@ async function handleProfileRoutes(req, res, url, parseBody, sendJson, db) {
       prefs = { userId: auth.user.id };
       store.notificationPrefs.push(prefs);
     }
-    Object.assign(prefs, body, { updatedAt: new Date().toISOString() });
+    const allowedKeys = ["bookingUpdates", "securityAlerts", "shiftReminders", "systemMaintenance", "promotions"];
+    allowedKeys.forEach(key => {
+      if (body[key] !== undefined) prefs[key] = Boolean(body[key]);
+    });
+    prefs.updatedAt = new Date().toISOString();
     sendJson(req, res, 200, prefs);
     return true;
   }
@@ -282,7 +301,10 @@ async function handleProfileRoutes(req, res, url, parseBody, sendJson, db) {
       return true;
     }
 
-    const logs = store.auditLogs.slice(-50).reverse();
+    const logs = store.auditLogs
+      .filter(log => auth.user.roleSlug === "super_admin" || auditLogVisibleToHospital(log, auth.user))
+      .slice(-50)
+      .reverse();
     sendJson(req, res, 200, logs);
     return true;
   }
@@ -453,7 +475,9 @@ function getRelatedData(userId, roleSlug, db) {
       ? db.hospitals.find(h => h.ownerId === userId || h.id === profile?.hospitalId) || null
       : db.hospitals.find(h => h.id === profile?.hospitalId) || null;
     data.hospital = myHospital;
-    data.bookings = myHospital ? db.bookings.filter(b => b.hospitalId === myHospital.id).slice(-20).reverse() : [];
+    if (["hospital_admin", "hospital_doctor", "hospital_reception"].includes(roleSlug)) {
+      data.bookings = myHospital ? db.bookings.filter(b => b.hospitalId === myHospital.id).slice(-20).reverse() : [];
+    }
     if (roleSlug === "hospital_admin") {
       data.hospitalTeam = getHospitalTeam(userId, myHospital?.id || profile?.hospitalId);
     }
@@ -563,6 +587,23 @@ function getHospitalTeam(ownerId, hospitalId) {
     })
     .filter(Boolean)
     .sort((a, b) => a.fullName.localeCompare(b.fullName));
+}
+
+function auditLogVisibleToHospital(log, owner) {
+  const profile = getProfile(owner);
+  const hospitalId = profile?.hospitalId;
+  if (!hospitalId) return log.userId === owner.id;
+
+  const teamUserIds = new Set([
+    owner.id,
+    ...store.hospitalStaffProfiles
+      .filter(member => member.hospitalId === hospitalId)
+      .map(member => member.userId)
+  ]);
+  return teamUserIds.has(log.userId)
+    || teamUserIds.has(Number(log.resourceId))
+    || (log.resourceType === "hospital" && Number(log.resourceId) === hospitalId)
+    || Number(log.metadata?.hospitalId) === hospitalId;
 }
 
 module.exports = { handleProfileRoutes };

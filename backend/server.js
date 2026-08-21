@@ -66,6 +66,12 @@ function checkPublicWriteRateLimit(key) {
   }
   entry.count += 1;
   publicWriteRateLimits.set(key, entry);
+  if (publicWriteRateLimits.size > 10000) {
+    for (const [storedKey, storedEntry] of publicWriteRateLimits) {
+      if (storedEntry.resetAt < now) publicWriteRateLimits.delete(storedKey);
+      if (publicWriteRateLimits.size <= 8000) break;
+    }
+  }
   return entry.count <= PUBLIC_WRITE_MAX;
 }
 
@@ -73,7 +79,7 @@ const PORT = Number(process.env.PORT || 4173);
 const HOST = process.env.HOST || "127.0.0.1";
 const FRONTEND_DIR = path.join(__dirname, "..", "frontend");
 
-const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || "*")
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || `http://${HOST}:${PORT}`)
   .split(",")
   .map(origin => origin.trim())
   .filter(Boolean);
@@ -175,9 +181,6 @@ const SECURITY_HEADERS = {
 };
 
 function corsHeaders(req) {
-  if (ALLOWED_ORIGINS.includes("*")) {
-    return { "Access-Control-Allow-Origin": "*" };
-  }
   const origin = req.headers.origin;
   if (origin && ALLOWED_ORIGINS.includes(origin)) {
     return { "Access-Control-Allow-Origin": origin, "Vary": "Origin" };
@@ -355,6 +358,31 @@ function bookingPublicDriver(booking) {
   return amb && amb.driverName ? { fullName: amb.driverName } : null;
 }
 
+function bookingsVisibleTo(user, bookings) {
+  if (["super_admin", "dispatcher"].includes(user.roleSlug)) return bookings;
+
+  if (user.roleSlug === "hospital_admin" || ["hospital_doctor", "hospital_reception"].includes(user.roleSlug)) {
+    const profile = getProfile(user);
+    return bookings.filter(booking => booking.hospitalId && booking.hospitalId === profile?.hospitalId);
+  }
+
+  if (user.roleSlug === "fleet_owner") {
+    return bookings.filter(booking => {
+      const ambulance = booking.ambulanceId ? db.ambulances.find(a => a.id === booking.ambulanceId) : null;
+      return ambulance?.ownerId === user.id;
+    });
+  }
+
+  if (user.roleSlug === "driver") {
+    return bookings.filter(booking => {
+      const ambulance = booking.ambulanceId ? db.ambulances.find(a => a.id === booking.ambulanceId) : null;
+      return booking.assignedDriverId === user.id || ambulance?.driverId === user.id;
+    });
+  }
+
+  return [];
+}
+
 function createBooking(body, customerId = null) {
   const missing = requireFields(body, ["patientName", "phone", "pickup"]);
   if (!String(body.destination || "").trim() && !body.hospitalId) missing.push("destination");
@@ -441,7 +469,7 @@ function serveStatic(req, res) {
 
     const filePath = path.normalize(candidates[index]);
     // Security: prevent escaping FRONTEND_DIR
-    if (!filePath.startsWith(FRONTEND_DIR)) {
+    if (path.relative(FRONTEND_DIR, filePath).startsWith("..") || path.isAbsolute(path.relative(FRONTEND_DIR, filePath))) {
       sendJson(req, res, 403, { error: "Forbidden" });
       return;
     }
@@ -449,7 +477,7 @@ function serveStatic(req, res) {
     fs.stat(filePath, (statErr, stat) => {
       if (!statErr && stat.isDirectory()) {
         const indexPath = path.normalize(path.join(filePath, "index.html"));
-        if (!indexPath.startsWith(FRONTEND_DIR)) {
+        if (path.relative(FRONTEND_DIR, indexPath).startsWith("..") || path.isAbsolute(path.relative(FRONTEND_DIR, indexPath))) {
           sendJson(req, res, 403, { error: "Forbidden" });
           return;
         }
@@ -703,11 +731,12 @@ async function handleApi(req, res) {
   if (req.method === "GET" && url.pathname === "/api/bookings") {
     const auth = requireAuth(req, res, sendJson);
     if (!auth) return;
-    if (auth.user.roleSlug === "customer") {
-      sendJson(req, res, 403, { error: "Use /api/my-bookings to view your own bookings.", code: "FORBIDDEN" });
+    const permissions = ROLE_PERMISSIONS[auth.user.roleSlug] || [];
+    if (!permissions.includes("bookings.read")) {
+      sendJson(req, res, 403, { error: "You don't have permission to view bookings.", code: "FORBIDDEN" });
       return;
     }
-    sendJson(req, res, 200, db.bookings);
+    sendJson(req, res, 200, bookingsVisibleTo(auth.user, db.bookings));
     return;
   }
   if (req.method === "GET" && url.pathname === "/api/bookings/lookup") {
@@ -870,6 +899,10 @@ async function handleApi(req, res) {
     const prior = chatSessions.get(sessionId) || emptySession();
     const result = handleMessage(body.message, prior);
     chatSessions.set(sessionId, result.session || emptySession());
+    if (chatSessions.size > 10000) {
+      const oldest = chatSessions.keys().next().value;
+      if (oldest) chatSessions.delete(oldest);
+    }
 
     let booking = null;
     if (result.nextAction === "create_booking" && result.readyBooking) {
@@ -899,6 +932,7 @@ async function handleApi(req, res) {
       id: nextId(db.chatbotLogs), sessionId, message: body.message || "",
       intent: result.intent, reply: result.reply, createdAt: new Date().toISOString()
     });
+    if (db.chatbotLogs.length > 10000) db.chatbotLogs.splice(0, db.chatbotLogs.length - 10000);
     sendJson(req, res, 200, { intent: result.intent, reply: result.reply, nextAction: result.nextAction, booking, hospitals });
     return;
   }
