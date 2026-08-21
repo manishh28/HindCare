@@ -27,8 +27,19 @@ function showLoading(show) {
   document.getElementById("global-loader").classList.toggle("hidden", !show);
 }
 
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, character => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;"
+  }[character]));
+}
+
 function renderAlert(type, message) {
-  return `<div class="md-alert md-alert-${type}" role="alert">${message}</div>`;
+  const safeType = ["error", "success", "info", "warning"].includes(type) ? type : "info";
+  return `<div class="md-alert md-alert-${safeType}" role="alert">${escapeHtml(message)}</div>`;
 }
 
 // ---- Screens ----
