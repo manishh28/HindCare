@@ -70,18 +70,25 @@ Example response:
 ```json
 {
   "id": 1,
-  "patientName": "Manish Kumar",
-  "phone": "+91-9876543210",
   "pickup": "Gomti Nagar, Lucknow",
+  "pickupLat": 26.85,
+  "pickupLng": 80.95,
   "destination": "HindCare Emergency Hospital",
-  "emergencyType": "general",
-  "ambulanceId": 1,
-  "assignedDriverId": 6,
+  "destinationLat": 26.8467,
+  "destinationLng": 80.9462,
   "status": "assigned",
-  "notes": "",
-  "createdAt": "2026-07-31T06:30:00.000Z"
+  "dispatchDistanceKm": 0.5,
+  "ambulance": {
+    "registrationNumber": "UP32 AB 1001",
+    "driverName": "Rahul Singh",
+    "type": "advanced",
+    "currentLat": 26.8467,
+    "currentLng": 80.9462
+  }
 }
 ```
+
+The coordinate fields and ambulance position are fictional demo data. The public homepage uses them to render a local route simulation; they are not live GPS coordinates.
 
 ### `POST /api/bookings`
 

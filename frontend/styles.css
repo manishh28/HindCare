@@ -1718,6 +1718,108 @@ select:focus {
   color: var(--console-muted);
 }
 
+.track-confirmed-booking {
+  justify-self: start;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--console-ink);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.track-confirmed-booking:hover { background: rgba(255, 255, 255, 0.16); }
+
+.tracking-map-wrap {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.tracking-map {
+  position: relative;
+  min-height: 190px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 10px;
+  background: #172333;
+}
+
+.map-grid-lines {
+  position: absolute;
+  inset: 0;
+  opacity: 0.5;
+  background-image: linear-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.08) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+.map-label {
+  position: absolute;
+  z-index: 2;
+  color: rgba(255, 255, 255, 0.56);
+  font: 10px var(--font-mono);
+  letter-spacing: 0.08em;
+}
+
+.map-label-north { top: 10px; left: 12px; }
+
+.tracking-route {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+}
+
+.tracking-route line {
+  stroke: #f2b84b;
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+  vector-effect: non-scaling-stroke;
+}
+
+.tracking-marker {
+  position: absolute;
+  z-index: 3;
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  transform: translate(-50%, -50%);
+  border: 2px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+  font-size: 14px;
+  transition: left 1.6s ease, top 1.6s ease;
+}
+
+.ambulance-marker { background: #d92038; }
+.pickup-marker { background: #f2b84b; color: #172333; }
+.hospital-marker { background: #2dd4bf; color: #092d2b; }
+
+.tracking-map-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  color: var(--console-muted);
+  font-size: 11px;
+}
+
+.tracking-map-legend span { display: inline-flex; align-items: center; gap: 4px; }
+
+.legend-dot { width: 7px; height: 7px; display: inline-block; border-radius: 50%; }
+.ambulance-legend { background: #d92038; }
+.pickup-legend { background: #f2b84b; }
+.hospital-legend { background: #2dd4bf; }
+
+.tracking-demo-note {
+  margin: 0;
+  color: var(--console-muted);
+  font-size: 10px;
+}
+
 /* ---- emergency tips ---- */
 .tips-grid {
   display: grid;

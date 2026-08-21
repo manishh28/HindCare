@@ -16,6 +16,13 @@ Use this file as your daily internship log.
 - Added ambulance vehicle onboarding form connected to the fleet API.
 - Added a booking status API route for checking one booking by ID.
 
+## 2026-08-22
+
+- Started Phase 4 location tracking prototype.
+- Added fictional pickup, hospital, and ambulance coordinates to booking lookup.
+- Added a browser-only demo map with route markers and simulated ambulance movement.
+- Clearly labeled the map as simulated; no real GPS or map provider is connected.
+
 ## Daily Log Template
 
 Date:

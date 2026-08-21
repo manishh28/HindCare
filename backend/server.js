@@ -110,12 +110,12 @@ const KNOWN_AREAS = [
 
 const db = {
   hospitals: [
-    { id: 1, name: "HindCare Emergency Hospital", city: "Lucknow", address: "SGPGI Road, Lucknow", phone: "+91-9000000001", email: "contact@hindcare-hospital.example", emergencyAvailable: true, totalBeds: 120, availableBeds: 28, status: "approved", ownerId: null, departments: [
+    { id: 1, name: "HindCare Emergency Hospital", city: "Lucknow", address: "SGPGI Road, Lucknow", phone: "+91-9000000001", email: "contact@hindcare-hospital.example", lat: 26.8467, lng: 80.9462, emergencyAvailable: true, totalBeds: 120, availableBeds: 28, status: "approved", ownerId: null, departments: [
       { name: "Emergency", status: "available" },
       { name: "Cardiology", status: "available" },
       { name: "ICU", status: "limited" }
     ] },
-    { id: 2, name: "MedTech City Hospital", city: "Lucknow", address: "Gomti Nagar, Lucknow", phone: "+91-9000000002", email: "contact@medtechcity.example", emergencyAvailable: true, totalBeds: 80, availableBeds: 12, status: "approved", ownerId: null, departments: [
+    { id: 2, name: "MedTech City Hospital", city: "Lucknow", address: "Gomti Nagar, Lucknow", phone: "+91-9000000002", email: "contact@medtechcity.example", lat: 26.8500, lng: 80.9500, emergencyAvailable: true, totalBeds: 80, availableBeds: 12, status: "approved", ownerId: null, departments: [
       { name: "Emergency", status: "available" },
       { name: "Orthopedics", status: "available" }
     ] }
@@ -402,6 +402,11 @@ function createBooking(body, customerId = null) {
     if (!hospital) return { statusCode: 400, error: "hospitalId does not match a known hospital" };
   }
 
+  const pickupPoint = geocodePickup(body.pickup);
+  const destinationPoint = hospital
+    ? { lat: hospital.lat, lng: hospital.lng }
+    : geocodePickup(body.destination);
+
   const { ambulance, distanceKm } = findBestAmbulance(body.pickup);
   const assignedDriverId = ambulance && ambulance.driverId ? ambulance.driverId : null;
   const booking = {
@@ -410,6 +415,10 @@ function createBooking(body, customerId = null) {
     phone: String(body.phone).trim(),
     pickup: String(body.pickup).trim().slice(0, 200),
     destination: hospital ? hospital.name : String(body.destination).trim().slice(0, 200),
+    pickupLat: pickupPoint?.lat ?? null,
+    pickupLng: pickupPoint?.lng ?? null,
+    destinationLat: destinationPoint?.lat ?? null,
+    destinationLng: destinationPoint?.lng ?? null,
     hospitalId: hospital ? hospital.id : null,
     customerId,
     emergencyType,
@@ -747,8 +756,19 @@ async function handleApi(req, res) {
     const amb = booking.ambulanceId ? db.ambulances.find(a => a.id === booking.ambulanceId) : null;
     sendJson(req, res, 200, {
       id: booking.id, status: booking.status, destination: booking.destination,
+      pickup: booking.pickup,
+      pickupLat: booking.pickupLat,
+      pickupLng: booking.pickupLng,
+      destinationLat: booking.destinationLat,
+      destinationLng: booking.destinationLng,
       dispatchDistanceKm: booking.dispatchDistanceKm,
-      ambulance: amb ? { registrationNumber: amb.registrationNumber, driverName: amb.driverName } : null,
+      ambulance: amb ? {
+        registrationNumber: amb.registrationNumber,
+        driverName: amb.driverName,
+        type: amb.type,
+        currentLat: amb.currentLat,
+        currentLng: amb.currentLng
+      } : null,
       driver: bookingPublicDriver(booking)
     });
     return;
