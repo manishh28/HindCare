@@ -1,6 +1,5 @@
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_RE = /^(\+91)?[6-9]\d{9}$/;
-const EMPLOYEE_ID_RE = /^[A-Z]{2,4}-[0-9]{4,6}$/i;
 
 export function validateEmail(value) {
   const v = String(value || "").trim();
@@ -16,13 +15,6 @@ export function validatePhone(value) {
     return { ok: false, message: "Enter a valid 10-digit mobile number" };
   }
   return { ok: true, value: normalized };
-}
-
-export function validateEmployeeId(value) {
-  const v = String(value || "").trim().toUpperCase();
-  if (!v) return { ok: false, message: "Employee ID is required" };
-  if (!EMPLOYEE_ID_RE.test(v)) return { ok: false, message: "Format: ABC-1234 (e.g. DRV-1001)" };
-  return { ok: true, value: v };
 }
 
 export function validatePassword(value) {
