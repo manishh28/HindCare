@@ -1,13 +1,13 @@
 import { authApi, saveAuth, clearAuth, isAuthenticated } from "./api.js";
 import {
   validateEmail, validatePhone, validatePassword, validateName,
-  validateEmployeeId, validateOtp, calcStrength, renderStrengthBar,
+  validateOtp, calcStrength, renderStrengthBar,
   setFieldError, setupRealtimeValidation, startOtpTimer
 } from "./validation.js";
 
 const ROLE_META = {
   customer: { icon: "👤", title: "Customer / Patient", desc: "Book ambulances & manage health profile", class: "customer" },
-  driver: { icon: "🚑", title: "Ambulance Driver", desc: "Employee ID + mobile login", class: "driver" },
+  driver: { icon: "🚑", title: "Ambulance Driver", desc: "Email/mobile login", class: "driver" },
   dispatcher: { icon: "📞", title: "Dispatcher", desc: "Call center & dispatch operations", class: "dispatcher" },
   hospital_admin: { icon: "🏥", title: "Hospital Admin", desc: "Manage hospital operations", class: "hospital_admin" },
   super_admin: { icon: "🛡️", title: "Super Admin", desc: "Enterprise system administration", class: "super_admin" }
@@ -146,10 +146,9 @@ function driverSignInForm() {
       <form id="signin-form" novalidate>
         <input type="hidden" name="role" value="driver">
         <input type="hidden" name="loginMethod" value="password" id="login-method">
-        <div class="md-field">
-          <label for="employeeId">Employee ID</label>
-          <input class="md-input" id="employeeId" name="employeeId" type="text" autocomplete="username" required placeholder="DRV-1001" aria-describedby="emp-hint">
-          <span class="md-field-hint" id="emp-hint">Format: DRV-XXXX</span>
+        <div class="md-field" id="field-identifier">
+          <label for="identifier">Email or mobile number</label>
+          <input class="md-input" id="identifier" name="identifier" type="text" autocomplete="username" required placeholder="rahul.singh@fleet.hindcare.in or 9111111111">
           <span class="md-field-error" role="alert"></span>
         </div>
         <div class="md-field" id="field-phone">
@@ -186,8 +185,8 @@ function dispatcherSignInForm() {
       <form id="signin-form" novalidate>
         <input type="hidden" name="role" value="dispatcher">
         <div class="md-field">
-          <label for="employeeId">Employee ID</label>
-          <input class="md-input" id="employeeId" name="employeeId" type="text" required placeholder="DSP-2001">
+          <label for="identifier">Email or mobile number</label>
+          <input class="md-input" id="identifier" name="identifier" type="text" autocomplete="username" required placeholder="dispatch@hindcare.in or 9222222222">
           <span class="md-field-error" role="alert"></span>
         </div>
         <div class="md-field">

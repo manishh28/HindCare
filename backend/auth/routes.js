@@ -222,15 +222,16 @@ async function handleAuthRoutes(req, res, url, parseBody, sendJson) {
     // Unified sign-in: if no role was specified but an identifier was,
     // resolve the account by identifier first and use its real role —
     // avoids needing a role picker on the main site's login form.
-    if (!role && !body.employeeId) {
+    if (!role) {
       const identifier = String(body.identifier || body.email || body.phone || "").trim();
-      if (identifier) {
-        const found = validateEmail(identifier) ? findUserByEmail(identifier) : findUserByPhone(identifier);
-        if (found && ["customer", "hospital_admin", "fleet_owner", "driver"].includes(found.roleSlug)) {
-          user = found;
-          roleSlug = found.roleSlug;
-          role = getRoleBySlug(roleSlug);
-        }
+      const found = identifier
+        ? validateEmail(identifier) ? findUserByEmail(identifier) : findUserByPhone(identifier)
+        : null;
+
+      if (found && ["customer", "hospital_admin", "fleet_owner", "driver", "dispatcher"].includes(found.roleSlug)) {
+        user = found;
+        roleSlug = found.roleSlug;
+        role = getRoleBySlug(roleSlug);
       }
     }
 
@@ -244,27 +245,13 @@ async function handleAuthRoutes(req, res, url, parseBody, sendJson) {
         if (body.loginMethod === "otp") {
           method = "otp";
           user = findUserByPhone(body.phone);
-        } else if (body.employeeId) {
-          if (!validateEmployeeId(body.employeeId)) {
-            sendJson(req, res, 400, { error: "Employee ID format looks incorrect.", code: "INVALID_EMPLOYEE_ID" });
-            return true;
-          }
-          user = findUserByEmployeeId(body.employeeId);
-          if (user && body.phone) {
-            const phoneUser = findUserByPhone(body.phone);
-            if (!phoneUser || phoneUser.id !== user.id) user = null;
-          }
         } else {
-          // Self-registered drivers have no employeeId — sign in by phone/email instead.
           const identifier = String(body.identifier || body.phone || body.email || "").trim();
           user = validateEmail(identifier) ? findUserByEmail(identifier) : findUserByPhone(identifier);
         }
       } else if (roleSlug === "dispatcher") {
-        if (body.employeeId && !validateEmployeeId(body.employeeId)) {
-          sendJson(req, res, 400, { error: "Employee ID format looks incorrect.", code: "INVALID_EMPLOYEE_ID" });
-          return true;
-        }
-        user = findUserByEmployeeId(body.employeeId);
+        const identifier = String(body.identifier || body.phone || body.email || "").trim();
+        user = validateEmail(identifier) ? findUserByEmail(identifier) : findUserByPhone(identifier);
       } else if (roleSlug === "hospital_admin" || roleSlug === "fleet_owner") {
         const identifier = String(body.identifier || body.phone || body.email || "").trim();
         user = validateEmail(identifier) ? findUserByEmail(identifier) : findUserByPhone(identifier);

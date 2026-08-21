@@ -31,7 +31,7 @@ The app is split into three entry points:
 | **Hospital admin** | Main site → Sign in or Create account → Hospital | `/profile/#hospital-admin` |
 | **Fleet owner** | Main site → Create account → Ambulance fleet | `/profile/#fleet-owner` |
 | **Driver** | Main site → Create account → Driver (requires fleet code) | `/profile/#driver` |
-| **Dispatcher** | Main site → Sign in (employee ID + password) | `/profile/#dispatcher` |
+| **Dispatcher** | Main site → Sign in (email/phone + password) | `/profile/#dispatcher` |
 | **Super admin** | `/auth/` → Enterprise sign-in | `/profile/#super-admin` |
 
 ## Features
@@ -110,8 +110,8 @@ Set `JWT_SECRET` before any shared or production deployment. In local developmen
 | Role | How to sign in |
 | --- | --- |
 | Fleet owner | Email: `suresh@yadavambulance.in` (main site Sign in) |
-| Driver | Employee ID: `DRV-1001`, phone: `9111111111` (main site Sign in) |
-| Dispatcher | Employee ID: `DSP-2001` (main site Sign in) |
+| Driver | Email: `rahul.singh@fleet.hindcare.in` or phone: `9111111111` |
+| Dispatcher | Email: `dispatch@hindcare.in` or phone: `9222222222` |
 | Hospital admin | Email: `admin@hindcare-hospital.in` (main site Sign in, MFA required) |
 | Super admin | Email: `superadmin@hindcare.in` at `/auth/` (MFA required) |
 

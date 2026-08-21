@@ -1,7 +1,7 @@
 import { authApi, saveAuth, clearAuth, isAuthenticated } from "./api.js";
 import {
   validateEmail, validatePhone, validatePassword, validateName,
-  validateEmployeeId, validateOtp, calcStrength, renderStrengthBar,
+  validateOtp, calcStrength, renderStrengthBar,
   setFieldError, setupRealtimeValidation, startOtpTimer
 } from "./validation.js";
 
@@ -100,10 +100,9 @@ function driverSignInForm() {
       <form id="signin-form" novalidate>
         <input type="hidden" name="role" value="driver">
         <input type="hidden" name="loginMethod" value="password" id="login-method">
-        <div class="md-field">
-          <label for="employeeId">Employee ID</label>
-          <input class="md-input" id="employeeId" name="employeeId" type="text" autocomplete="username" required placeholder="DRV-1001" aria-describedby="emp-hint">
-          <span class="md-field-hint" id="emp-hint">Format: DRV-XXXX</span>
+        <div class="md-field" id="field-identifier">
+          <label for="identifier">Email or mobile number</label>
+          <input class="md-input" id="identifier" name="identifier" type="text" autocomplete="username" required placeholder="rahul.singh@fleet.hindcare.in or 9111111111">
           <span class="md-field-error" role="alert"></span>
         </div>
         <div class="md-field" id="field-phone">
@@ -140,8 +139,8 @@ function dispatcherSignInForm() {
       <form id="signin-form" novalidate>
         <input type="hidden" name="role" value="dispatcher">
         <div class="md-field">
-          <label for="employeeId">Employee ID</label>
-          <input class="md-input" id="employeeId" name="employeeId" type="text" required placeholder="DSP-2001">
+          <label for="identifier">Email or mobile number</label>
+          <input class="md-input" id="identifier" name="identifier" type="text" autocomplete="username" required placeholder="dispatch@hindcare.in or 9222222222">
           <span class="md-field-error" role="alert"></span>
         </div>
         <div class="md-field">
