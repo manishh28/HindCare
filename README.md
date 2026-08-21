@@ -1,8 +1,8 @@
 # HindCare Hospital and Ambulance Aggregator
 
-HindCare is a Phase 1 emergency healthcare platform that connects patients with hospitals and ambulance operators — designed like consumer ambulance-booking services (Medulance, RED.Health, Medicab, etc.): **booking an ambulance is the primary action**, with self-service accounts for hospitals, fleet owners, and drivers.
+HindCare is a Phase 3 emergency healthcare platform prototype that connects patients with hospitals and ambulance operators — designed like consumer ambulance-booking services (Medulance, RED.Health, Medicab, etc.): **booking an ambulance is the primary action**, with self-service accounts and role-based operational dashboards.
 
-> **Current status:** Phase 2 prototype using fictional, in-memory demo data. This is not a live emergency service and does not yet connect to real hospitals, ambulance fleets, GPS services, or patient records. In a real emergency, call your local emergency number (e.g. **108** in India).
+> **Current status:** Phase 3 prototype using fictional, in-memory demo data. This is not a live emergency service and does not connect to real hospitals, ambulance fleets, GPS services, or patient records. In a real emergency, call your local emergency number (e.g. **108** in India).
 
 ## Platform surfaces
 
@@ -12,7 +12,7 @@ The app is split into three entry points:
 | --- | --- | --- |
 | **Public site** | http://127.0.0.1:4173/ | Ambulance booking, optional patient accounts, partner sign-up |
 | **Staff dashboard** | http://127.0.0.1:4173/profile/ | Operational ERP for drivers, dispatchers, hospital admins, fleet owners, super admins |
-| **Enterprise login** | http://127.0.0.1:4173/auth/ | Super Admin sign-in only |
+| **Enterprise login** | http://127.0.0.1:4173/auth/ | Enterprise and MFA-protected sign-in |
 
 ## Design approach
 
@@ -21,6 +21,7 @@ The app is split into three entry points:
 - **Partners self-register.** Hospitals, fleet owners, and drivers create accounts from the main site **Sign in** panel and manage operations from `/profile/`.
 - **Real authorization.** Protected API routes use JWT sessions and role-based permissions — not a client-side role switcher.
 - **Dispatcher workspace.** Dispatchers can view active requests, see ambulances and drivers, assign or reassign trips, and move bookings through the active trip lifecycle.
+- **Hospital sub-roles.** Hospital owners can create Doctor, Reception, and Staff accounts. Each role receives a narrower hospital view and permission set.
 - **Honest demo data.** Stats (fleet ready, hospitals in network, avg. dispatch distance) are computed live from in-memory data, not invented marketing numbers.
 
 ## User roles
@@ -29,6 +30,9 @@ The app is split into three entry points:
 | --- | --- | --- |
 | **Patient / Customer** | Main site → **Sign in** (phone or email + password) | Account panel on homepage |
 | **Hospital admin** | Main site → Sign in or Create account → Hospital | `/profile/#hospital-admin` |
+| **Hospital doctor** | Hospital owner creates the account | `/profile/#hospital` |
+| **Hospital reception** | Hospital owner creates the account | `/profile/#hospital` |
+| **Hospital staff** | Hospital owner creates the account | `/profile/#hospital` |
 | **Fleet owner** | Main site → Create account → Ambulance fleet | `/profile/#fleet-owner` |
 | **Driver** | Main site → Create account → Driver (requires fleet code) | `/profile/#driver` |
 | **Dispatcher** | Main site → Sign in (email/phone + password) | `/profile/#dispatcher` |
@@ -52,7 +56,10 @@ The app is split into three entry points:
 - Edit profile, notifications, emergency contacts, addresses
 - **Driver** — documents, availability status, assigned trip status updates
 - **Dispatcher** — live status, request queue, ambulance/driver assignment, active trip monitoring
-- **Hospital admin** — manage own hospital (beds, departments, contact info)
+- **Hospital admin** — manage own hospital, beds, departments, and hospital team accounts
+- **Hospital doctor** — view assigned hospital, departments, and recent ambulance requests
+- **Hospital reception** — view hospital operations and update live bed availability
+- **Hospital staff** — view assigned hospital information with read-only access
 - **Fleet owner** — register ambulances, assign drivers, fleet overview
 - **Super admin** — activity log, system information
 
@@ -113,6 +120,8 @@ Set `JWT_SECRET` before any shared or production deployment. In local developmen
 | Driver | Email: `rahul.singh@fleet.hindcare.in` or phone: `9111111111` |
 | Dispatcher | Email: `dispatch@hindcare.in` or phone: `9222222222` |
 | Hospital admin | Email: `admin@hindcare-hospital.in` (main site Sign in, MFA required) |
+| Hospital doctor | Email: `doctor@hindcare-hospital.in` |
+| Hospital reception | Email: `reception@hindcare-hospital.in` |
 | Super admin | Email: `superadmin@hindcare.in` at `/auth/` (MFA required) |
 
 **Patients** are not pre-seeded — create an account via the main site **Sign in** panel → Create account → Patient.
@@ -148,7 +157,7 @@ frontend/
 | `GET` | `/api/health` | — | Server health check |
 | `GET` | `/api/hospitals` | — | List hospitals |
 | `POST` | `/api/hospitals` | — | Submit hospital (starts as `pending`; honeypot protected) |
-| `PATCH` | `/api/hospitals/:id` | JWT | Approve/reject (super admin) or manage own hospital (hospital admin) |
+| `PATCH` | `/api/hospitals/:id` | JWT | Approve/reject (super admin), manage own hospital (hospital admin), or update beds (hospital reception) |
 | `GET` | `/api/ambulances` | — | List ambulances (driver contact redacted for public) |
 | `POST` | `/api/ambulances` | JWT (fleet owner) | Register an ambulance to your fleet |
 | `PATCH` | `/api/ambulances/:id` | JWT (owner/admin) | Update status or assign driver |
@@ -187,6 +196,8 @@ All profile routes require a valid JWT.
 | `PATCH` | `/api/profile/availability` | Driver availability |
 | `PATCH` | `/api/profile/live-status` | Dispatcher live status |
 | `GET` | `/api/profile/audit-logs` | Audit log (admin roles) |
+| `GET` | `/api/profile/hospital-team` | List team accounts (hospital admin) |
+| `POST` | `/api/profile/hospital-team` | Create doctor, reception, or staff account (hospital admin) |
 
 See [`docs/api-docs.md`](docs/api-docs.md) for request and response examples.
 

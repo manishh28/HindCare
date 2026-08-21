@@ -1,14 +1,27 @@
 const {
   findUserById,
+  findUserByEmail,
+  findUserByPhone,
+  getRoleBySlug,
   getProfile,
+  attachProfile,
+  hashPassword,
+  normalizePhone,
   sanitizeUser,
   store,
+  nextUserId,
   nextAddressId,
   nextEmergencyId,
   nextDocumentId
 } = require("../auth/store");
 
-const { requireAuth, auditAction } = require("../auth/middleware");
+const { requireAuth, auditAction, validateEmail, validatePhone, validatePassword } = require("../auth/middleware");
+
+const HOSPITAL_SUB_ROLES = {
+  doctor: "hospital_doctor",
+  reception: "hospital_reception",
+  staff: "hospital_staff"
+};
 
 async function handleProfileRoutes(req, res, url, parseBody, sendJson, db) {
   // ---- Get full profile ----
@@ -274,6 +287,111 @@ async function handleProfileRoutes(req, res, url, parseBody, sendJson, db) {
     return true;
   }
 
+  // ---- Hospital team (hospital owner only) ----
+  if (req.method === "GET" && url.pathname === "/api/profile/hospital-team") {
+    const auth = requireAuth(req, res, sendJson);
+    if (!auth) return true;
+
+    if (auth.user.roleSlug !== "hospital_admin") {
+      sendJson(req, res, 403, { error: "Only hospital owners can manage hospital team accounts." });
+      return true;
+    }
+
+    const ownerProfile = getProfile(auth.user);
+    const team = getHospitalTeam(auth.user.id, ownerProfile?.hospitalId);
+    sendJson(req, res, 200, team);
+    return true;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/profile/hospital-team") {
+    const auth = requireAuth(req, res, sendJson);
+    if (!auth) return true;
+
+    if (auth.user.roleSlug !== "hospital_admin") {
+      sendJson(req, res, 403, { error: "Only hospital owners can create hospital team accounts." });
+      return true;
+    }
+
+    const ownerProfile = getProfile(auth.user);
+    if (!ownerProfile?.hospitalId) {
+      sendJson(req, res, 409, { error: "Register your hospital before adding team members." });
+      return true;
+    }
+
+    const body = await parseBody(req);
+    const teamRole = String(body.teamRole || "").trim().toLowerCase();
+    const roleSlug = HOSPITAL_SUB_ROLES[teamRole];
+    const missing = ["fullName", "email", "phone", "password", "teamRole"].filter(f => !String(body[f] || "").trim());
+    if (missing.length) {
+      sendJson(req, res, 400, { error: "Missing required fields", fields: missing });
+      return true;
+    }
+    if (!roleSlug) {
+      sendJson(req, res, 400, { error: "teamRole must be doctor, reception, or staff." });
+      return true;
+    }
+    if (!validateEmail(body.email)) {
+      sendJson(req, res, 400, { error: "Invalid email address" });
+      return true;
+    }
+    if (!validatePhone(body.phone)) {
+      sendJson(req, res, 400, { error: "Invalid phone number" });
+      return true;
+    }
+    const pwdCheck = validatePassword(body.password);
+    if (!pwdCheck.ok) {
+      sendJson(req, res, 400, { error: pwdCheck.error, code: "WEAK_PASSWORD" });
+      return true;
+    }
+
+    const email = String(body.email).trim().toLowerCase();
+    const phone = normalizePhone(body.phone);
+    if (findUserByEmail(email) || findUserByPhone(phone)) {
+      sendJson(req, res, 409, { error: "A user with this email or phone already exists." });
+      return true;
+    }
+
+    const role = getRoleBySlug(roleSlug);
+    const userId = nextUserId();
+    const user = {
+      id: userId,
+      roleId: role.id,
+      roleSlug: role.slug,
+      employeeId: `${teamRole.slice(0, 3).toUpperCase()}-${String(userId).padStart(4, "0")}`,
+      email,
+      phone,
+      passwordHash: await hashPassword(body.password),
+      emailVerified: false,
+      phoneVerified: false,
+      mfaEnabled: false,
+      mfaSecret: null,
+      status: "active",
+      failedLoginAttempts: 0,
+      lockedUntil: null,
+      lastLoginAt: null,
+      passwordChangedAt: new Date().toISOString(),
+      googleId: null,
+      preferredLanguage: "en",
+      theme: "light",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      deletedAt: null
+    };
+    store.users.push(user);
+    attachProfile(user, {
+      fullName: String(body.fullName).trim().slice(0, 120),
+      hospitalId: ownerProfile.hospitalId,
+      hospitalOwnerId: auth.user.id,
+      staffRole: teamRole,
+      department: String(body.department || "").trim().slice(0, 80) || null,
+      designation: String(body.designation || "").trim().slice(0, 80) || null
+    });
+
+    auditAction(req, auth.user.id, "hospital.team.created", "user", user.id, { role: roleSlug });
+    sendJson(req, res, 201, getHospitalTeam(auth.user.id, ownerProfile.hospitalId).find(member => member.id === user.id));
+    return true;
+  }
+
   return false;
 }
 
@@ -329,10 +447,16 @@ function getRelatedData(userId, roleSlug, db) {
       });
   }
 
-  if (roleSlug === "hospital_admin" && db) {
-    const myHospital = db.hospitals.find(h => h.ownerId === userId) || null;
+  if (isHospitalRole(roleSlug) && db) {
+    const profile = getProfile({ id: userId, roleSlug });
+    const myHospital = roleSlug === "hospital_admin"
+      ? db.hospitals.find(h => h.ownerId === userId || h.id === profile?.hospitalId) || null
+      : db.hospitals.find(h => h.id === profile?.hospitalId) || null;
     data.hospital = myHospital;
     data.bookings = myHospital ? db.bookings.filter(b => b.hospitalId === myHospital.id).slice(-20).reverse() : [];
+    if (roleSlug === "hospital_admin") {
+      data.hospitalTeam = getHospitalTeam(userId, myHospital?.id || profile?.hospitalId);
+    }
   }
 
   if (roleSlug === "super_admin") {
@@ -403,11 +527,42 @@ function getEditableFields(roleSlug) {
     driver: [...common, "fullName", "emergencyContactName", "emergencyContactPhone", "languages"],
     dispatcher: [...common, "fullName"],
     hospital_admin: [...common, "adminName", "phone", "gstNumber", "notificationEmail", "notificationSms"],
+    hospital_doctor: [...common, "fullName", "department", "designation"],
+    hospital_reception: [...common, "fullName", "department", "designation"],
+    hospital_staff: [...common, "fullName", "department", "designation"],
     super_admin: [...common, "fullName", "organizationName"],
     customer: [...common, "fullName"],
     fleet_owner: [...common, "fullName", "companyName"]
   };
   return map[roleSlug] || common;
+}
+
+function isHospitalRole(roleSlug) {
+  return ["hospital_admin", "hospital_doctor", "hospital_reception", "hospital_staff"].includes(roleSlug);
+}
+
+function getHospitalTeam(ownerId, hospitalId) {
+  return store.hospitalStaffProfiles
+    .filter(profile => profile.hospitalOwnerId === ownerId || (hospitalId && profile.hospitalId === hospitalId))
+    .map(profile => {
+      const user = findUserById(profile.userId);
+      if (!user) return null;
+      return {
+        id: user.id,
+        role: user.roleSlug,
+        roleName: sanitizeUser(user).roleName,
+        employeeId: user.employeeId,
+        fullName: profile.fullName,
+        email: user.email,
+        phone: user.phone,
+        department: profile.department,
+        designation: profile.designation,
+        status: user.status,
+        createdAt: user.createdAt
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.fullName.localeCompare(b.fullName));
 }
 
 module.exports = { handleProfileRoutes };

@@ -649,6 +649,7 @@ function setAccountView(view) {
   // time's forgot-password step.
   if (view !== "signin") resetSigninView();
   if (view !== "signup") resetSignupView();
+  if (view === "signup") updateSignupRoleFields();
   if (view === "dashboard") renderDashboard();
 }
 
@@ -671,15 +672,11 @@ function resetSigninView() {
 
 function resetSignupView() {
   document.getElementById("account-signup-form").reset();
-  ["signup-fullname", "signup-phone", "signup-email", "signup-fleetcode", "signup-password"].forEach(clearFieldError);
+  ["signup-fullname", "signup-phone", "signup-email", "signup-hospital", "signup-company", "signup-fleetcode", "signup-password"].forEach(clearFieldError);
   setFormError("signup-form-error", "");
   const customerRadio = document.querySelector('input[name="signupRole"][value="customer"]');
   if (customerRadio) customerRadio.checked = true;
-  document.querySelectorAll("#signup-role-group .role-chip").forEach(chip => {
-    chip.classList.toggle("selected", chip.querySelector("input").checked);
-  });
-  document.getElementById("signup-company-field").classList.add("hidden");
-  document.getElementById("signup-fleetcode-field").classList.add("hidden");
+  updateSignupRoleFields();
 }
 
 // =======================================================================
@@ -851,7 +848,7 @@ document.getElementById("account-signup-form").addEventListener("submit", async 
   const role = document.querySelector('input[name="signupRole"]:checked')?.value || "customer";
   payload.role = role;
 
-  ["signup-fullname", "signup-phone", "signup-email", "signup-fleetcode", "signup-password"].forEach(clearFieldError);
+  ["signup-fullname", "signup-phone", "signup-email", "signup-hospital", "signup-company", "signup-fleetcode", "signup-password"].forEach(clearFieldError);
   setFormError("signup-form-error", "");
 
   let hasError = false;
@@ -867,10 +864,21 @@ document.getElementById("account-signup-form").addEventListener("submit", async 
     setFieldError("signup-email", "Enter a valid email address.");
     hasError = true;
   }
+  if (role === "hospital_admin" && !payload.hospitalName.trim()) {
+    setFieldError("signup-hospital", "Enter your hospital name.");
+    hasError = true;
+  }
+  if (role === "fleet_owner" && !payload.companyName.trim()) {
+    setFieldError("signup-company", "Enter your ambulance company name.");
+    hasError = true;
+  }
   if (role === "driver" && !payload.fleetCode.trim()) {
     setFieldError("signup-fleetcode", "Enter the fleet code your fleet owner gave you.");
     hasError = true;
   }
+  if (role !== "hospital_admin") delete payload.hospitalName;
+  if (role !== "fleet_owner") delete payload.companyName;
+  if (role !== "driver") delete payload.fleetCode;
   if (!payload.password) {
     setFieldError("signup-password", "Enter a password.");
     hasError = true;
@@ -911,15 +919,37 @@ document.getElementById("account-signup-form").addEventListener("submit", async 
 });
 
 // Toggle role-specific signup fields
-document.getElementById("signup-role-group").addEventListener("change", event => {
-  const role = event.target.value;
+function updateSignupRoleFields() {
+  const role = document.querySelector('input[name="signupRole"]:checked')?.value || "customer";
   document.querySelectorAll("#signup-role-group .role-chip").forEach(chip => {
     chip.classList.toggle("selected", chip.querySelector("input").checked);
   });
-  document.getElementById("signup-company-field").classList.toggle("hidden", role !== "fleet_owner");
-  document.getElementById("signup-fleetcode-field").classList.toggle("hidden", role !== "driver");
-  document.getElementById("signup-fleetcode").required = role === "driver";
-});
+
+  const roleFields = {
+    hospital_admin: ["signup-hospital-field"],
+    fleet_owner: ["signup-company-field"],
+    driver: ["signup-fleetcode-field"],
+    customer: []
+  };
+  const visibleFields = new Set(roleFields[role] || []);
+  [
+    ["signup-hospital-field", "signup-hospital"],
+    ["signup-company-field", "signup-company"],
+    ["signup-fleetcode-field", "signup-fleetcode"]
+  ].forEach(([fieldId, inputId]) => {
+    const field = document.getElementById(fieldId);
+    const input = document.getElementById(inputId);
+    const isVisible = visibleFields.has(fieldId);
+    field.classList.toggle("hidden", !isVisible);
+    input.required = isVisible && role !== "customer";
+    if (!isVisible) {
+      input.value = "";
+      clearFieldError(inputId);
+    }
+  });
+}
+
+document.getElementById("signup-role-group").addEventListener("change", updateSignupRoleFields);
 
 // =======================================================================
 // Forgot password (uses the existing forgot/reset-password API as-is)

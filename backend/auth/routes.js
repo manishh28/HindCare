@@ -103,6 +103,8 @@ async function handleAuthRoutes(req, res, url, parseBody, sendJson) {
     const roleSlug = selfServiceRoles.includes(body.role) ? body.role : "customer";
 
     const missing = ["fullName", "phone", "password"].filter(f => !String(body[f] || "").trim());
+    if (roleSlug === "hospital_admin" && !String(body.hospitalName || "").trim()) missing.push("hospitalName");
+    if (roleSlug === "fleet_owner" && !String(body.companyName || "").trim()) missing.push("companyName");
     if (roleSlug === "driver" && !String(body.fleetCode || "").trim()) missing.push("fleetCode");
     if (missing.length) {
       sendJson(req, res, 400, { error: "Missing required fields", fields: missing });
@@ -179,9 +181,10 @@ async function handleAuthRoutes(req, res, url, parseBody, sendJson) {
     if (roleSlug === "hospital_admin") {
       profileData.hospitalId = null; // set once they register their hospital in a follow-up call
       profileData.adminName = body.fullName.trim();
+      profileData.hospitalName = String(body.hospitalName).trim().slice(0, 150);
     }
     if (roleSlug === "fleet_owner") {
-      profileData.companyName = body.companyName ? String(body.companyName).trim().slice(0, 120) : null;
+      profileData.companyName = String(body.companyName).trim().slice(0, 120);
     }
     if (roleSlug === "driver") {
       profileData.fleetOwnerId = fleetOwnerId;
@@ -228,7 +231,7 @@ async function handleAuthRoutes(req, res, url, parseBody, sendJson) {
         ? validateEmail(identifier) ? findUserByEmail(identifier) : findUserByPhone(identifier)
         : null;
 
-      if (found && ["customer", "hospital_admin", "fleet_owner", "driver", "dispatcher"].includes(found.roleSlug)) {
+      if (found && ["customer", "hospital_admin", "hospital_doctor", "hospital_reception", "hospital_staff", "fleet_owner", "driver", "dispatcher"].includes(found.roleSlug)) {
         user = found;
         roleSlug = found.roleSlug;
         role = getRoleBySlug(roleSlug);
@@ -252,7 +255,7 @@ async function handleAuthRoutes(req, res, url, parseBody, sendJson) {
       } else if (roleSlug === "dispatcher") {
         const identifier = String(body.identifier || body.phone || body.email || "").trim();
         user = validateEmail(identifier) ? findUserByEmail(identifier) : findUserByPhone(identifier);
-      } else if (roleSlug === "hospital_admin" || roleSlug === "fleet_owner") {
+      } else if (["hospital_admin", "hospital_doctor", "hospital_reception", "hospital_staff", "fleet_owner"].includes(roleSlug)) {
         const identifier = String(body.identifier || body.phone || body.email || "").trim();
         user = validateEmail(identifier) ? findUserByEmail(identifier) : findUserByPhone(identifier);
       } else if (roleSlug === "super_admin") {
@@ -335,6 +338,9 @@ async function handleAuthRoutes(req, res, url, parseBody, sendJson) {
       driver: "/profile/#driver",
       dispatcher: "/profile/#dispatcher",
       hospital_admin: "/profile/#hospital-admin",
+      hospital_doctor: "/profile/#hospital",
+      hospital_reception: "/profile/#hospital",
+      hospital_staff: "/profile/#hospital",
       super_admin: "/profile/#super-admin",
       fleet_owner: "/profile/#fleet-owner"
     };
