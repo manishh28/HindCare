@@ -103,6 +103,7 @@ Optional JSON fields:
 ### `PATCH /api/bookings/:id`
 
 Updates a booking. Dispatchers and super admins can assign or reassign the ambulance and driver. Staff with booking update permission can move the booking through its lifecycle.
+Drivers can update only the booking assigned to their own driver account.
 
 Dispatcher assignment example:
 
