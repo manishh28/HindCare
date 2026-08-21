@@ -559,10 +559,10 @@ const PHONE_PATTERN = /^\+?[0-9][0-9\s-]{6,17}$/;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const patientState = {
-  accessToken: localStorage.getItem(`${PATIENT_KEY}_token`) || null,
-  refreshToken: localStorage.getItem(`${PATIENT_KEY}_refresh`) || null,
-  user: JSON.parse(localStorage.getItem(`${PATIENT_KEY}_user`) || "null"),
-  profile: JSON.parse(localStorage.getItem(`${PATIENT_KEY}_profile`) || "null")
+  accessToken: sessionStorage.getItem(`${PATIENT_KEY}_token`) || null,
+  refreshToken: sessionStorage.getItem(`${PATIENT_KEY}_refresh`) || null,
+  user: JSON.parse(sessionStorage.getItem(`${PATIENT_KEY}_user`) || "null"),
+  profile: JSON.parse(sessionStorage.getItem(`${PATIENT_KEY}_profile`) || "null")
 };
 
 function savePatientAuth(data) {
@@ -570,10 +570,10 @@ function savePatientAuth(data) {
   patientState.refreshToken = data.refreshToken;
   patientState.user = data.user;
   patientState.profile = data.profile;
-  localStorage.setItem(`${PATIENT_KEY}_token`, data.accessToken);
-  if (data.refreshToken) localStorage.setItem(`${PATIENT_KEY}_refresh`, data.refreshToken);
-  localStorage.setItem(`${PATIENT_KEY}_user`, JSON.stringify(data.user));
-  localStorage.setItem(`${PATIENT_KEY}_profile`, JSON.stringify(data.profile));
+  sessionStorage.setItem(`${PATIENT_KEY}_token`, data.accessToken);
+  if (data.refreshToken) sessionStorage.setItem(`${PATIENT_KEY}_refresh`, data.refreshToken);
+  sessionStorage.setItem(`${PATIENT_KEY}_user`, JSON.stringify(data.user));
+  sessionStorage.setItem(`${PATIENT_KEY}_profile`, JSON.stringify(data.profile));
 }
 
 function clearPatientAuth() {
@@ -581,10 +581,10 @@ function clearPatientAuth() {
   patientState.refreshToken = null;
   patientState.user = null;
   patientState.profile = null;
-  localStorage.removeItem(`${PATIENT_KEY}_token`);
-  localStorage.removeItem(`${PATIENT_KEY}_refresh`);
-  localStorage.removeItem(`${PATIENT_KEY}_user`);
-  localStorage.removeItem(`${PATIENT_KEY}_profile`);
+  sessionStorage.removeItem(`${PATIENT_KEY}_token`);
+  sessionStorage.removeItem(`${PATIENT_KEY}_refresh`);
+  sessionStorage.removeItem(`${PATIENT_KEY}_user`);
+  sessionStorage.removeItem(`${PATIENT_KEY}_profile`);
 }
 
 async function patientApi(path, options = {}) {
@@ -603,7 +603,7 @@ async function patientApi(path, options = {}) {
     if (refreshRes.ok) {
       const refreshData = await refreshRes.json();
       patientState.accessToken = refreshData.accessToken;
-      localStorage.setItem(`${PATIENT_KEY}_token`, refreshData.accessToken);
+      sessionStorage.setItem(`${PATIENT_KEY}_token`, refreshData.accessToken);
       return patientApi(path, { ...options, _retried: true });
     }
     clearPatientAuth();
@@ -831,9 +831,9 @@ function completeSignIn(data) {
     setAccountView("dashboard");
   } else {
     // Hospital/fleet/driver accounts operate from /profile/, not this panel.
-    localStorage.setItem("hindcare_auth_token", data.accessToken);
-    localStorage.setItem("hindcare_auth_refresh", data.refreshToken);
-    localStorage.setItem("hindcare_auth_user", JSON.stringify(data.user));
+    sessionStorage.setItem("hindcare_auth_token", data.accessToken);
+    sessionStorage.setItem("hindcare_auth_refresh", data.refreshToken);
+    sessionStorage.setItem("hindcare_auth_user", JSON.stringify(data.user));
     window.location.href = data.redirectTo || "/profile/";
   }
 }
@@ -903,9 +903,9 @@ document.getElementById("account-signup-form").addEventListener("submit", async 
       // Hospital/fleet/driver accounts use the operational dashboard at
       // /profile/, not the lightweight patient panel — hand off the
       // session using the same storage keys that dashboard already reads.
-      localStorage.setItem("hindcare_auth_token", data.accessToken);
-      localStorage.setItem("hindcare_auth_refresh", data.refreshToken);
-      localStorage.setItem("hindcare_auth_user", JSON.stringify(data.user));
+    sessionStorage.setItem("hindcare_auth_token", data.accessToken);
+    sessionStorage.setItem("hindcare_auth_refresh", data.refreshToken);
+    sessionStorage.setItem("hindcare_auth_user", JSON.stringify(data.user));
       window.location.href = "/profile/";
     }
   } catch (error) {
@@ -1059,7 +1059,7 @@ document.getElementById("account-details-edit").addEventListener("submit", async
   try {
     const res = await patientApi("/api/profile", { method: "PATCH", body: JSON.stringify({ fullName }) });
     patientState.profile = res.profile;
-    localStorage.setItem(`${PATIENT_KEY}_profile`, JSON.stringify(res.profile));
+    sessionStorage.setItem(`${PATIENT_KEY}_profile`, JSON.stringify(res.profile));
     updateAccountNav();
     document.getElementById("account-details-view").classList.remove("hidden");
     document.getElementById("edit-details-btn").classList.remove("hidden");

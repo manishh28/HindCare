@@ -1,28 +1,28 @@
 const AUTH_STORAGE_KEY = "hindcare_auth";
 
 const authState = {
-  accessToken: localStorage.getItem(`${AUTH_STORAGE_KEY}_token`) || null,
-  refreshToken: localStorage.getItem(`${AUTH_STORAGE_KEY}_refresh`) || null,
-  user: JSON.parse(localStorage.getItem(`${AUTH_STORAGE_KEY}_user`) || "null"),
-  rememberMe: localStorage.getItem(`${AUTH_STORAGE_KEY}_remember`) === "true"
+  accessToken: sessionStorage.getItem(`${AUTH_STORAGE_KEY}_token`) || null,
+  refreshToken: sessionStorage.getItem(`${AUTH_STORAGE_KEY}_refresh`) || null,
+  user: JSON.parse(sessionStorage.getItem(`${AUTH_STORAGE_KEY}_user`) || "null"),
+  rememberMe: sessionStorage.getItem(`${AUTH_STORAGE_KEY}_remember`) === "true"
 };
 
 function saveAuth(data) {
   authState.accessToken = data.accessToken;
   authState.refreshToken = data.refreshToken;
   authState.user = data.user;
-  localStorage.setItem(`${AUTH_STORAGE_KEY}_token`, data.accessToken);
-  if (data.refreshToken) localStorage.setItem(`${AUTH_STORAGE_KEY}_refresh`, data.refreshToken);
-  localStorage.setItem(`${AUTH_STORAGE_KEY}_user`, JSON.stringify(data.user));
+  sessionStorage.setItem(`${AUTH_STORAGE_KEY}_token`, data.accessToken);
+  if (data.refreshToken) sessionStorage.setItem(`${AUTH_STORAGE_KEY}_refresh`, data.refreshToken);
+  sessionStorage.setItem(`${AUTH_STORAGE_KEY}_user`, JSON.stringify(data.user));
 }
 
 function clearAuth() {
   authState.accessToken = null;
   authState.refreshToken = null;
   authState.user = null;
-  localStorage.removeItem(`${AUTH_STORAGE_KEY}_token`);
-  localStorage.removeItem(`${AUTH_STORAGE_KEY}_refresh`);
-  localStorage.removeItem(`${AUTH_STORAGE_KEY}_user`);
+  sessionStorage.removeItem(`${AUTH_STORAGE_KEY}_token`);
+  sessionStorage.removeItem(`${AUTH_STORAGE_KEY}_refresh`);
+  sessionStorage.removeItem(`${AUTH_STORAGE_KEY}_user`);
 }
 
 function isAuthenticated() {
@@ -50,7 +50,7 @@ async function authApi(path, options = {}) {
     if (refreshRes.ok) {
       const refreshData = await refreshRes.json();
       authState.accessToken = refreshData.accessToken;
-      localStorage.setItem(`${AUTH_STORAGE_KEY}_token`, refreshData.accessToken);
+      sessionStorage.setItem(`${AUTH_STORAGE_KEY}_token`, refreshData.accessToken);
       return authApi(path, { ...options, _retried: true });
     }
     clearAuth();

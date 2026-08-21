@@ -55,6 +55,12 @@ function checkRateLimit(key) {
   }
   entry.count += 1;
   rateLimits.set(key, entry);
+  if (rateLimits.size > 10000) {
+    for (const [storedKey, storedEntry] of rateLimits) {
+      if (storedEntry.resetAt < now) rateLimits.delete(storedKey);
+      if (rateLimits.size <= 8000) break;
+    }
+  }
   return entry.count <= RATE_LIMIT_MAX;
 }
 
@@ -365,6 +371,10 @@ async function handleAuthRoutes(req, res, url, parseBody, sendJson) {
     const body = await parseBody(req);
     const purpose = body.purpose || "login";
     const channel = body.channel || "phone";
+    if (!["phone", "email"].includes(channel) || !["login", "verify_phone", "verify_email", "mfa"].includes(purpose)) {
+      sendJson(req, res, 400, { error: "Invalid OTP request", code: "INVALID_OTP_REQUEST" });
+      return true;
+    }
     let destination = body.destination || body.phone || body.email;
 
     if (channel === "phone") destination = normalizePhone(destination);
@@ -372,6 +382,14 @@ async function handleAuthRoutes(req, res, url, parseBody, sendJson) {
 
     if (!destination) {
       sendJson(req, res, 400, { error: "Destination required", code: "MISSING_DESTINATION" });
+      return true;
+    }
+    if (channel === "phone" && !validatePhone(destination)) {
+      sendJson(req, res, 400, { error: "Invalid phone number", code: "INVALID_PHONE" });
+      return true;
+    }
+    if (channel === "email" && !validateEmail(destination)) {
+      sendJson(req, res, 400, { error: "Invalid email address", code: "INVALID_EMAIL" });
       return true;
     }
 
@@ -391,11 +409,20 @@ async function handleAuthRoutes(req, res, url, parseBody, sendJson) {
   if (req.method === "POST" && url.pathname === "/api/auth/otp/verify") {
     const body = await parseBody(req);
     const purpose = body.purpose || "verify_phone";
+    if (!["login", "verify_phone", "verify_email", "mfa"].includes(purpose) || !/^\d{6}$/.test(String(body.otp || ""))) {
+      sendJson(req, res, 400, { error: "Invalid OTP request", code: "INVALID_OTP_REQUEST" });
+      return true;
+    }
     let destination = body.destination || body.phone || body.email;
     if (body.channel === "email" || purpose.includes("email")) {
       destination = String(destination).trim().toLowerCase();
     } else {
       destination = normalizePhone(destination);
+    }
+
+    if (!destination || !checkRateLimit(`otp-verify:${ipKey}:${destination}`)) {
+      sendJson(req, res, 429, { error: "Too many OTP verification attempts", code: "RATE_LIMITED" });
+      return true;
     }
 
     const result = verifyOtpRecord(destination, purpose, body.otp);

@@ -1,9 +1,9 @@
 const PROFILE_STORAGE_KEY = "hindcare_auth";
 
 const profileState = {
-  accessToken: localStorage.getItem(`${PROFILE_STORAGE_KEY}_token`) || null,
-  refreshToken: localStorage.getItem(`${PROFILE_STORAGE_KEY}_refresh`) || null,
-  user: JSON.parse(localStorage.getItem(`${PROFILE_STORAGE_KEY}_user`) || "null"),
+  accessToken: sessionStorage.getItem(`${PROFILE_STORAGE_KEY}_token`) || null,
+  refreshToken: sessionStorage.getItem(`${PROFILE_STORAGE_KEY}_refresh`) || null,
+  user: JSON.parse(sessionStorage.getItem(`${PROFILE_STORAGE_KEY}_user`) || "null"),
   profileData: null
 };
 
@@ -28,7 +28,7 @@ async function profileApi(path, options = {}) {
     if (refreshRes.ok) {
       const refreshData = await refreshRes.json();
       profileState.accessToken = refreshData.accessToken;
-      localStorage.setItem(`${PROFILE_STORAGE_KEY}_token`, refreshData.accessToken);
+      sessionStorage.setItem(`${PROFILE_STORAGE_KEY}_token`, refreshData.accessToken);
       return profileApi(path, { ...options, _retried: true });
     }
     window.location.href = "/auth/#/session-expired";
@@ -40,9 +40,9 @@ async function profileApi(path, options = {}) {
 }
 
 function clearProfileAuth() {
-  localStorage.removeItem(`${PROFILE_STORAGE_KEY}_token`);
-  localStorage.removeItem(`${PROFILE_STORAGE_KEY}_refresh`);
-  localStorage.removeItem(`${PROFILE_STORAGE_KEY}_user`);
+  sessionStorage.removeItem(`${PROFILE_STORAGE_KEY}_token`);
+  sessionStorage.removeItem(`${PROFILE_STORAGE_KEY}_refresh`);
+  sessionStorage.removeItem(`${PROFILE_STORAGE_KEY}_user`);
 }
 
 function requireAuth() {

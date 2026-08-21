@@ -10,6 +10,7 @@ const ROLE_META = {
 };
 
 let selectedRole = sessionStorage.getItem("hindcare_selected_role") || "";
+let pendingLogin = null;
 let otpCleanup = null;
 
 function getRoute() {
@@ -427,7 +428,7 @@ async function bindSignInForm(form) {
       });
 
       if (data.requiresMfa) {
-        sessionStorage.setItem("pending_login", JSON.stringify(payload));
+        pendingLogin = payload;
         if (data.demoOtp) sessionStorage.setItem("demo_mfa_otp", data.demoOtp);
         navigate("/mfa");
         return;
@@ -500,7 +501,7 @@ async function bindMfaForm(form) {
   form.addEventListener("submit", async e => {
     e.preventDefault();
     const alert = document.getElementById("form-alert");
-    const pending = JSON.parse(sessionStorage.getItem("pending_login") || "{}");
+    const pending = pendingLogin || {};
     const mfaCode = form.querySelector("#mfa-value").value;
 
     showLoading(true);
@@ -510,7 +511,7 @@ async function bindMfaForm(form) {
         body: JSON.stringify({ ...pending, mfaCode })
       });
       saveAuth(data);
-      sessionStorage.removeItem("pending_login");
+      pendingLogin = null;
       window.location.href = data.redirectTo || "/profile/";
     } catch (err) {
       alert.innerHTML = renderAlert("error", err.message);
