@@ -318,6 +318,34 @@ function driverOption(userId) {
   };
 }
 
+function driverProfileById(userId) {
+  const user = findUserById(userId);
+  if (!user || user.roleSlug !== "driver") return null;
+  return getProfile(user);
+}
+
+function markDriverBusy(userId) {
+  const profile = driverProfileById(userId);
+  if (profile) {
+    profile.availabilityStatus = "busy";
+    profile.updatedAt = new Date().toISOString();
+  }
+}
+
+function releaseDriverIfFree(userId, currentBookingId = null) {
+  const profile = driverProfileById(userId);
+  if (!profile) return;
+  const hasOtherActiveTrip = db.bookings.some(booking =>
+    booking.id !== currentBookingId &&
+    booking.assignedDriverId === userId &&
+    ["assigned", "on_route"].includes(booking.status)
+  );
+  if (!hasOtherActiveTrip && profile.availabilityStatus === "busy") {
+    profile.availabilityStatus = "available";
+    profile.updatedAt = new Date().toISOString();
+  }
+}
+
 function bookingPublicDriver(booking) {
   if (booking.assignedDriverId) {
     const driver = driverOption(booking.assignedDriverId);
@@ -367,6 +395,7 @@ function createBooking(body, customerId = null) {
   };
 
   if (ambulance) ambulance.status = "busy";
+  if (assignedDriverId) markDriverBusy(assignedDriverId);
   db.bookings.push(booking);
   return { statusCode: 201, booking };
 }
@@ -746,6 +775,8 @@ async function handleApi(req, res) {
       return;
     }
 
+    const previousDriverId = booking.assignedDriverId || null;
+
     if (hasDispatchUpdate) {
       let nextAmbulance = booking.ambulanceId ? db.ambulances.find(a => a.id === booking.ambulanceId) : null;
       if (body.ambulanceId !== undefined) {
@@ -802,6 +833,15 @@ async function handleApi(req, res) {
     if ((booking.status === "completed" || booking.status === "cancelled") && booking.ambulanceId) {
       const ambulance = db.ambulances.find(a => a.id === booking.ambulanceId);
       if (ambulance && ambulance.status === "busy") ambulance.status = "available";
+    }
+    if (previousDriverId && previousDriverId !== booking.assignedDriverId) {
+      releaseDriverIfFree(previousDriverId, booking.id);
+    }
+    if (booking.assignedDriverId && ["assigned", "on_route"].includes(booking.status)) {
+      markDriverBusy(booking.assignedDriverId);
+    }
+    if (booking.assignedDriverId && ["completed", "cancelled"].includes(booking.status)) {
+      releaseDriverIfFree(booking.assignedDriverId, booking.id);
     }
     sendJson(req, res, 200, booking);
     return;

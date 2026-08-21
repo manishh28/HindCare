@@ -237,6 +237,9 @@ async function renderOverview(el) {
           ${infoRow("Pickup", trip.pickup)}
           ${infoRow("Destination", trip.destination)}
           ${infoRow("Status", trip.status)}
+          <div class="dispatch-actions" id="driver-trip-actions">
+            ${(DISPATCH_NEXT_STATUSES[trip.status] || []).map(status => `<button type="button" class="md-btn md-btn-outlined" data-driver-trip-id="${trip.id}" data-driver-trip-status="${status}">${escapeHtml(prettyStatus(status))}</button>`).join("")}
+          </div>
         </div>
       </div>` : ""}`;
   } else if (role === "dispatcher") {
@@ -323,6 +326,21 @@ async function renderOverview(el) {
 
   document.getElementById("open-dispatch-btn")?.addEventListener("click", () => {
     window.location.hash = "#/dispatch";
+  });
+
+  document.getElementById("driver-trip-actions")?.addEventListener("click", async e => {
+    const btn = e.target.closest("[data-driver-trip-status]");
+    if (!btn) return;
+    try {
+      await profileApi(`/api/bookings/${btn.dataset.driverTripId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: btn.dataset.driverTripStatus })
+      });
+      toast("Trip status updated", "success");
+      await refreshProfileData();
+    } catch (err) {
+      toast(err.message, "error");
+    }
   });
 }
 

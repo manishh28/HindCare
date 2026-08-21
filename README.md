@@ -50,7 +50,7 @@ The app is split into three entry points:
 
 - Role-based sidebar navigation and overview pages
 - Edit profile, notifications, emergency contacts, addresses
-- **Driver** — documents, availability status
+- **Driver** — documents, availability status, assigned trip status updates
 - **Dispatcher** — live status, request queue, ambulance/driver assignment, active trip monitoring
 - **Hospital admin** — manage own hospital (beds, departments, contact info)
 - **Fleet owner** — register ambulances, assign drivers, fleet overview
