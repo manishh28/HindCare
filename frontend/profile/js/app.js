@@ -36,13 +36,19 @@ const COMMON_NAV = [
   { id: "addresses", label: "Addresses", icon: "map" }
 ];
 
+const HOSPITAL_ROLES = ["hospital_admin", "hospital_doctor", "hospital_reception", "hospital_staff"];
+
 const ROLE_NAV = {
   driver: [{ id: "documents", label: "Documents", icon: "file" }],
   dispatcher: [{ id: "dispatch", label: "Dispatch", icon: "activity" }],
   hospital_admin: [
     { id: "hospital", label: "My Hospital", icon: "hospital" },
+    { id: "hospital-team", label: "Hospital Team", icon: "users" },
     { id: "activity", label: "Activity Log", icon: "activity" }
   ],
+  hospital_doctor: [{ id: "hospital", label: "My Hospital", icon: "hospital" }],
+  hospital_reception: [{ id: "hospital", label: "My Hospital", icon: "hospital" }],
+  hospital_staff: [{ id: "hospital", label: "My Hospital", icon: "hospital" }],
   super_admin: [
     { id: "activity", label: "Activity Log", icon: "activity" },
     { id: "system", label: "System", icon: "system" }
@@ -64,6 +70,7 @@ const PAGE_TITLES = {
   activity: "Activity Log",
   system: "System",
   hospital: "My Hospital",
+  "hospital-team": "Hospital Team",
   fleet: "My Fleet",
   "fleet-drivers": "My Drivers"
 };
@@ -124,7 +131,7 @@ async function logout() {
     // Best-effort — still clear the local session below even if this fails.
   }
   clearProfileAuth();
-  window.location.href = "/auth/";
+  window.location.href = "/";
 }
 
 // ---------------------------------------------------------------------
@@ -175,6 +182,7 @@ const RENDERERS = {
   activity: renderActivity,
   system: renderSystem,
   hospital: renderHospital,
+  "hospital-team": renderHospitalTeam,
   fleet: renderFleet,
   "fleet-drivers": renderFleetDrivers
 };
@@ -268,12 +276,22 @@ async function renderOverview(el) {
           <button type="button" class="md-btn md-btn-filled" id="open-dispatch-btn">Open dispatch board</button>
         </div>
       </div>`;
-  } else if (role === "hospital_admin") {
+  } else if (HOSPITAL_ROLES.includes(role)) {
     const hospital = data.hospital || await resolveHospital(profile.hospitalId);
     if (hospital) {
       statsHtml = statCard(`${hospital.availableBeds}/${hospital.totalBeds}`, "Beds available")
         + statCard(hospital.status, "Hospital status")
         + statCard(hospital.city || "—", "City");
+    }
+    if (role === "hospital_admin") {
+      extraCard = `
+        <div class="profile-card">
+          <div class="profile-card-header"><h2>Hospital team</h2></div>
+          <div class="profile-card-body">
+            <p class="info-label" style="margin-bottom:1rem;">Create doctor, reception, and staff accounts with narrower access than the hospital owner.</p>
+            <button type="button" class="md-btn md-btn-filled" id="open-team-btn">Manage team</button>
+          </div>
+        </div>`;
     }
   } else if (role === "super_admin") {
     const sys = data.systemInfo || {};
@@ -328,6 +346,10 @@ async function renderOverview(el) {
     window.location.hash = "#/dispatch";
   });
 
+  document.getElementById("open-team-btn")?.addEventListener("click", () => {
+    window.location.hash = "#/hospital-team";
+  });
+
   document.getElementById("driver-trip-actions")?.addEventListener("click", async e => {
     const btn = e.target.closest("[data-driver-trip-status]");
     if (!btn) return;
@@ -372,10 +394,18 @@ function overviewRows(role, profile, user) {
   if (role === "hospital_admin") {
     return common
       + infoRow("Admin name", profile.adminName)
+      + infoRow("Hospital name", profile.hospitalName || "Not registered yet")
       + infoRow("GST number", profile.gstNumber)
       + infoRow("Hospital license", profile.licenseNumber)
       + infoRow("Email notifications", profile.notificationEmail ? "On" : "Off")
       + infoRow("SMS notifications", profile.notificationSms ? "On" : "Off");
+  }
+  if (["hospital_doctor", "hospital_reception", "hospital_staff"].includes(role)) {
+    return common
+      + infoRow("Full name", profile.fullName)
+      + infoRow("Department", profile.department || "—")
+      + infoRow("Designation", profile.designation || "—")
+      + infoRow("Access level", user.roleName);
   }
   if (role === "super_admin") {
     return common
@@ -416,6 +446,21 @@ const EDIT_FIELDS = {
     { key: "adminName", label: "Admin name", type: "text" },
     { key: "phone", label: "Phone", type: "tel" },
     { key: "gstNumber", label: "GST number", type: "text" }
+  ],
+  hospital_doctor: [
+    { key: "fullName", label: "Full name", type: "text" },
+    { key: "department", label: "Department", type: "text" },
+    { key: "designation", label: "Designation", type: "text" }
+  ],
+  hospital_reception: [
+    { key: "fullName", label: "Full name", type: "text" },
+    { key: "department", label: "Department", type: "text" },
+    { key: "designation", label: "Designation", type: "text" }
+  ],
+  hospital_staff: [
+    { key: "fullName", label: "Full name", type: "text" },
+    { key: "department", label: "Department", type: "text" },
+    { key: "designation", label: "Designation", type: "text" }
   ],
   super_admin: [
     { key: "fullName", label: "Full name", type: "text" },
@@ -927,15 +972,29 @@ function renderSystem(el) {
 // ---------------------------------------------------------------------
 async function renderHospital(el) {
   const hospital = data.hospital;
+  const role = data.user.role;
+  const canManageHospital = role === "hospital_admin";
+  const canUpdateBeds = canManageHospital || role === "hospital_reception";
+  const canEditDepartments = canManageHospital;
 
   if (!hospital) {
+    if (!canManageHospital) {
+      el.innerHTML = `
+        <div class="profile-card full-width">
+          <div class="profile-card-header"><h2>Hospital access</h2></div>
+          <div class="profile-card-body">
+            <div class="empty-state-card">Your account is not linked to a registered hospital yet. Ask your hospital owner to review your team access.</div>
+          </div>
+        </div>`;
+      return;
+    }
     el.innerHTML = `
       <div class="profile-card full-width">
         <div class="profile-card-header"><h2>Register your hospital</h2></div>
         <div class="profile-card-body">
           <p class="info-label" style="margin-bottom:1rem;">You haven't registered a hospital yet. Once submitted, an administrator will review and approve it before it appears to patients.</p>
           <form id="hospital-register-form" class="edit-form">
-            <div class="md-field"><label>Hospital name</label><div class="md-input-wrap"><input class="md-input" id="reg-name" required></div></div>
+            <div class="md-field"><label>Hospital name</label><div class="md-input-wrap"><input class="md-input" id="reg-name" value="${escapeHtml(data.profile?.hospitalName || "")}" required></div></div>
             <div class="md-field"><label>City</label><div class="md-input-wrap"><input class="md-input" id="reg-city" required></div></div>
             <div class="md-field"><label>Address</label><div class="md-input-wrap"><input class="md-input" id="reg-address" required></div></div>
             <div class="md-field"><label>Phone</label><div class="md-input-wrap"><input class="md-input" type="tel" id="reg-phone" required></div></div>
@@ -973,11 +1032,30 @@ async function renderHospital(el) {
   const deptRow = (d, i) => `
     <div class="list-item" data-dept-index="${i}">
       <div style="flex:1;"><strong>${escapeHtml(d.name)}</strong></div>
-      <select class="md-input" style="max-width:160px;" data-dept-status>
+      <select class="md-input" style="max-width:160px;" data-dept-status ${canEditDepartments ? "" : "disabled"}>
         ${["available", "limited", "unavailable"].map(s => `<option value="${s}" ${d.status === s ? "selected" : ""}>${s}</option>`).join("")}
       </select>
-      <button type="button" class="ghost-button danger" data-dept-remove>Remove</button>
+      ${canEditDepartments ? '<button type="button" class="ghost-button danger" data-dept-remove>Remove</button>' : ""}
     </div>`;
+
+  const bedFields = `
+    <div class="md-field"><label>Total beds</label><div class="md-input-wrap"><input class="md-input" type="number" min="0" id="hosp-total-beds" value="${hospital.totalBeds}" ${canUpdateBeds ? "" : "disabled"}></div></div>
+    <div class="md-field"><label>Available beds</label><div class="md-input-wrap"><input class="md-input" type="number" min="0" id="hosp-available-beds" value="${hospital.availableBeds}" ${canUpdateBeds ? "" : "disabled"}></div></div>
+    ${canUpdateBeds ? '<button type="button" class="md-btn md-btn-filled" id="hosp-save-beds-btn">Save beds</button><p class="form-result" id="hosp-beds-result" role="status"></p>' : '<p class="info-label">Only the hospital owner or reception team can update live bed availability.</p>'}`;
+
+  const departmentControls = canEditDepartments ? `
+    <div class="md-field" style="margin-top:1rem;"><label>Add department</label><div class="md-input-wrap"><input class="md-input" id="hosp-dept-new" placeholder="e.g. Neurology"></div></div>
+    <button type="button" class="md-btn md-btn-outlined" id="hosp-add-dept-btn">Add</button>
+    <button type="button" class="md-btn md-btn-filled" id="hosp-save-dept-btn" style="margin-left:0.5rem;">Save departments</button>
+    <p class="form-result" id="hosp-dept-result" role="status"></p>` : '<p class="info-label" style="margin-top:1rem;">Departments are managed by the hospital owner.</p>';
+
+  const bookingView = role === "hospital_doctor" || role === "hospital_reception" ? `
+    <div class="profile-card full-width">
+      <div class="profile-card-header"><h2>Recent ambulance requests</h2></div>
+      <div class="profile-card-body">
+        ${(data.bookings || []).length ? data.bookings.slice(0, 8).map(b => `<div class="list-item"><div><strong>Booking #${escapeHtml(b.id)}</strong><div class="info-label">${escapeHtml(b.patientName || "Patient")} · ${escapeHtml(b.emergencyType || "Emergency")}</div></div><span class="role-badge">${escapeHtml(b.status)}</span></div>`).join("") : '<div class="empty-state-card">No ambulance requests for this hospital yet.</div>'}
+      </div>
+    </div>` : "";
 
   el.innerHTML = `
     <div class="profile-card full-width">
@@ -993,25 +1071,20 @@ async function renderHospital(el) {
     <div class="profile-card">
       <div class="profile-card-header"><h2>Beds</h2></div>
       <div class="profile-card-body">
-        <div class="md-field"><label>Total beds</label><div class="md-input-wrap"><input class="md-input" type="number" min="0" id="hosp-total-beds" value="${hospital.totalBeds}"></div></div>
-        <div class="md-field"><label>Available beds</label><div class="md-input-wrap"><input class="md-input" type="number" min="0" id="hosp-available-beds" value="${hospital.availableBeds}"></div></div>
-        <button type="button" class="md-btn md-btn-filled" id="hosp-save-beds-btn">Save beds</button>
-        <p class="form-result" id="hosp-beds-result" role="status"></p>
+        ${bedFields}
       </div>
     </div>
     <div class="profile-card">
       <div class="profile-card-header"><h2>Departments</h2></div>
       <div class="profile-card-body">
         <div id="hosp-dept-list">${(hospital.departments || []).map(deptRow).join("") || '<div class="empty-state-card">No departments added yet.</div>'}</div>
-        <div class="md-field" style="margin-top:1rem;"><label>Add department</label><div class="md-input-wrap"><input class="md-input" id="hosp-dept-new" placeholder="e.g. Neurology"></div></div>
-        <button type="button" class="md-btn md-btn-outlined" id="hosp-add-dept-btn">Add</button>
-        <button type="button" class="md-btn md-btn-filled" id="hosp-save-dept-btn" style="margin-left:0.5rem;">Save departments</button>
-        <p class="form-result" id="hosp-dept-result" role="status"></p>
+        ${departmentControls}
       </div>
     </div>
+    ${bookingView}
   `;
 
-  document.getElementById("hosp-save-beds-btn").addEventListener("click", async () => {
+  document.getElementById("hosp-save-beds-btn")?.addEventListener("click", async () => {
     const result = document.getElementById("hosp-beds-result");
     try {
       const updated = await profileApi(`/api/hospitals/${hospital.id}`, {
@@ -1029,7 +1102,7 @@ async function renderHospital(el) {
     }
   });
 
-  document.getElementById("hosp-add-dept-btn").addEventListener("click", () => {
+  document.getElementById("hosp-add-dept-btn")?.addEventListener("click", () => {
     const input = document.getElementById("hosp-dept-new");
     const name = input.value.trim();
     if (!name) return;
@@ -1039,7 +1112,7 @@ async function renderHospital(el) {
     renderRoute();
   });
 
-  document.getElementById("hosp-dept-list").addEventListener("click", e => {
+  document.getElementById("hosp-dept-list")?.addEventListener("click", e => {
     if (e.target.matches("[data-dept-remove]")) {
       const row = e.target.closest("[data-dept-index]");
       hospital.departments.splice(Number(row.dataset.deptIndex), 1);
@@ -1047,7 +1120,7 @@ async function renderHospital(el) {
     }
   });
 
-  document.getElementById("hosp-save-dept-btn").addEventListener("click", async () => {
+  document.getElementById("hosp-save-dept-btn")?.addEventListener("click", async () => {
     const result = document.getElementById("hosp-dept-result");
     const rows = document.querySelectorAll("#hosp-dept-list [data-dept-index]");
     const departments = Array.from(rows).map(row => ({
@@ -1061,6 +1134,74 @@ async function renderHospital(el) {
       });
       data.hospital = { ...data.hospital, ...updated };
       result.textContent = "Saved.";
+      renderRoute();
+    } catch (err) {
+      result.textContent = err.message;
+    }
+  });
+}
+
+// ---------------------------------------------------------------------
+// Hospital team (hospital_admin only)
+// ---------------------------------------------------------------------
+async function renderHospitalTeam(el) {
+  const team = data.hospitalTeam || await profileApi("/api/profile/hospital-team");
+  data.hospitalTeam = team;
+  const roleLabels = { hospital_doctor: "Doctor", hospital_reception: "Reception", hospital_staff: "Staff" };
+
+  el.innerHTML = `
+    <div class="profile-card full-width">
+      <div class="profile-card-header"><h2>Hospital team</h2></div>
+      <div class="profile-card-body">
+        <p class="info-label" style="margin-bottom:1rem;">Create focused accounts for doctors, reception, and staff. They can only access the hospital work relevant to their role.</p>
+        ${team.length ? team.map(member => `
+          <div class="list-item">
+            <div style="flex:1;"><strong>${escapeHtml(member.fullName)}</strong><div class="info-label">${escapeHtml(roleLabels[member.role] || member.roleName)} · ${escapeHtml(member.department || "No department")}${member.designation ? " · " + escapeHtml(member.designation) : ""}</div><div class="info-label">${escapeHtml(member.email)} · ${escapeHtml(member.phone)}</div></div>
+            <span class="role-badge">${escapeHtml(member.status)}</span>
+          </div>`).join("") : '<div class="empty-state-card">No team members added yet.</div>'}
+      </div>
+    </div>
+    <div class="profile-card full-width">
+      <div class="profile-card-header"><h2>Add team member</h2></div>
+      <div class="profile-card-body">
+        <form id="hospital-team-form" class="edit-form">
+          <div class="grid grid-2">
+            <div class="md-field"><label for="team-name">Full name</label><div class="md-input-wrap"><input class="md-input" id="team-name" required></div></div>
+            <div class="md-field"><label for="team-role">Role</label><div class="md-input-wrap"><select class="md-input" id="team-role"><option value="doctor">Doctor</option><option value="reception">Reception</option><option value="staff">Staff</option></select></div></div>
+          </div>
+          <div class="grid grid-2">
+            <div class="md-field"><label for="team-email">Email</label><div class="md-input-wrap"><input class="md-input" type="email" id="team-email" required></div></div>
+            <div class="md-field"><label for="team-phone">Phone</label><div class="md-input-wrap"><input class="md-input" type="tel" id="team-phone" required></div></div>
+          </div>
+          <div class="grid grid-2">
+            <div class="md-field"><label for="team-password">Temporary password</label><div class="md-input-wrap"><input class="md-input" type="password" id="team-password" minlength="8" required></div></div>
+            <div class="md-field"><label for="team-department">Department</label><div class="md-input-wrap"><input class="md-input" id="team-department" placeholder="Emergency / Front Desk"></div></div>
+          </div>
+          <div class="md-field"><label for="team-designation">Designation</label><div class="md-input-wrap"><input class="md-input" id="team-designation" placeholder="Optional"></div></div>
+          <div class="form-actions"><button type="submit" class="md-btn md-btn-filled">Create team account</button></div>
+          <p class="form-result" id="hospital-team-result" role="status"></p>
+        </form>
+      </div>
+    </div>`;
+
+  document.getElementById("hospital-team-form").addEventListener("submit", async e => {
+    e.preventDefault();
+    const result = document.getElementById("hospital-team-result");
+    try {
+      const member = await profileApi("/api/profile/hospital-team", {
+        method: "POST",
+        body: JSON.stringify({
+          fullName: document.getElementById("team-name").value.trim(),
+          teamRole: document.getElementById("team-role").value,
+          email: document.getElementById("team-email").value.trim(),
+          phone: document.getElementById("team-phone").value.trim(),
+          password: document.getElementById("team-password").value,
+          department: document.getElementById("team-department").value.trim(),
+          designation: document.getElementById("team-designation").value.trim()
+        })
+      });
+      data.hospitalTeam.unshift(member);
+      toast("Team account created", "success");
       renderRoute();
     } catch (err) {
       result.textContent = err.message;

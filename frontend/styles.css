@@ -59,6 +59,10 @@ body {
   line-height: 1.5;
 }
 
+.hidden {
+  display: none !important;
+}
+
 h1, h2, h3 {
   margin: 0;
   font-family: var(--font-display);

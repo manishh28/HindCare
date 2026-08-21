@@ -582,10 +582,22 @@ async function handleApi(req, res) {
       return;
     }
 
-    // Everything else (beds, departments, contact info) — owner or admin only.
+    // Everything else is scoped to the hospital. Owners can manage all details;
+    // reception can only maintain live bed numbers for their own hospital.
+    const profile = getProfile(auth.user);
     const isOwner = auth.user.roleSlug === "hospital_admin" && hospital.ownerId === auth.user.id;
-    if (!isOwner && auth.user.roleSlug !== "super_admin") {
-      sendJson(req, res, 403, { error: "You can only manage your own hospital.", code: "FORBIDDEN" });
+    const isHospitalSubRole = ["hospital_doctor", "hospital_reception", "hospital_staff"].includes(auth.user.roleSlug)
+      && profile?.hospitalId === hospital.id;
+    if (!isOwner && !isHospitalSubRole && auth.user.roleSlug !== "super_admin") {
+      sendJson(req, res, 403, { error: "You can only view or manage your assigned hospital.", code: "FORBIDDEN" });
+      return;
+    }
+    const adminWrite = isOwner || auth.user.roleSlug === "super_admin";
+    const bedWrite = adminWrite || auth.user.roleSlug === "hospital_reception";
+    const requestedKeys = Object.keys(body).filter(key => key !== "status");
+    const onlyBedKeys = requestedKeys.every(key => ["totalBeds", "availableBeds"].includes(key));
+    if (!adminWrite && (!bedWrite || !onlyBedKeys)) {
+      sendJson(req, res, 403, { error: "Your hospital role can only update bed availability.", code: "FORBIDDEN" });
       return;
     }
 

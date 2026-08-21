@@ -17,7 +17,10 @@ const ROLES = [
   { id: 3, slug: "hospital_admin", name: "Hospital Admin", mfaRequired: true },
   { id: 4, slug: "super_admin", name: "Super Admin", mfaRequired: true },
   { id: 5, slug: "customer", name: "Patient", mfaRequired: false },
-  { id: 6, slug: "fleet_owner", name: "Ambulance Fleet Owner", mfaRequired: false }
+  { id: 6, slug: "fleet_owner", name: "Ambulance Fleet Owner", mfaRequired: false },
+  { id: 7, slug: "hospital_doctor", name: "Hospital Doctor", mfaRequired: false },
+  { id: 8, slug: "hospital_reception", name: "Hospital Reception", mfaRequired: false },
+  { id: 9, slug: "hospital_staff", name: "Hospital Staff", mfaRequired: false }
 ];
 
 const ROLE_PERMISSIONS = {
@@ -26,7 +29,10 @@ const ROLE_PERMISSIONS = {
   hospital_admin: ["bookings.read", "hospitals.manage", "ambulances.manage", "profile.read", "profile.update", "audit.read"],
   super_admin: ["bookings.read", "bookings.update", "bookings.dispatch", "hospitals.manage", "ambulances.manage", "users.manage", "audit.read", "system.configure", "profile.read", "profile.update"],
   customer: ["bookings.read", "profile.read", "profile.update"],
-  fleet_owner: ["bookings.read", "ambulances.manage", "profile.read", "profile.update"]
+  fleet_owner: ["bookings.read", "ambulances.manage", "profile.read", "profile.update"],
+  hospital_doctor: ["bookings.read", "hospitals.read", "profile.read", "profile.update"],
+  hospital_reception: ["bookings.read", "hospitals.read", "hospitals.beds.update", "profile.read", "profile.update"],
+  hospital_staff: ["hospitals.read", "profile.read", "profile.update"]
 };
 
 let nextUserId = 6;
@@ -47,6 +53,7 @@ const store = {
   driverProfiles: [],
   dispatcherProfiles: [],
   hospitalAdminProfiles: [],
+  hospitalStaffProfiles: [],
   superAdminProfiles: [],
   customerProfiles: [],
   fleetOwnerProfiles: [],
@@ -92,6 +99,20 @@ async function seedDemoUsers() {
       profile: { adminName: "Dr. Vikram Mehta", phone: "+919333333333", gstNumber: "09AABCH1234A1Z5", licenseNumber: "HOS-LKO-2018-001" }
     },
     {
+      roleSlug: "hospital_doctor",
+      employeeId: "DOC-3101",
+      email: "doctor@hindcare-hospital.in",
+      phone: "+919333333334",
+      profile: { fullName: "Dr. Neha Sharma", hospitalId: 1, hospitalOwnerId: null, staffRole: "doctor", department: "Emergency", designation: "Emergency Physician" }
+    },
+    {
+      roleSlug: "hospital_reception",
+      employeeId: "REC-3201",
+      email: "reception@hindcare-hospital.in",
+      phone: "+919333333335",
+      profile: { fullName: "Priya Tiwari", hospitalId: 1, hospitalOwnerId: null, staffRole: "reception", department: "Front Desk", designation: "Reception Executive" }
+    },
+    {
       roleSlug: "super_admin",
       employeeId: "SA-0001",
       email: "superadmin@hindcare.in",
@@ -133,12 +154,18 @@ async function seedDemoUsers() {
 
   // Link demo accounts together now that real ids exist.
   const demoFleetOwner = store.users.find(u => u.email === "suresh@yadavambulance.in");
+  const demoHospitalOwner = store.users.find(u => u.email === "admin@hindcare-hospital.in");
   const demoDriverProfile = store.driverProfiles.find(p => {
     const owner = findUserById(p.userId);
     return owner && owner.email === "rahul.singh@fleet.hindcare.in";
   });
   if (demoFleetOwner && demoDriverProfile) {
     demoDriverProfile.fleetOwnerId = demoFleetOwner.id;
+  }
+  if (demoHospitalOwner) {
+    store.hospitalStaffProfiles
+      .filter(p => p.hospitalId === 1 && !p.hospitalOwnerId)
+      .forEach(p => { p.hospitalOwnerId = demoHospitalOwner.id; });
   }
 }
 
@@ -153,6 +180,20 @@ function attachProfile(user, profile) {
       break;
     case "hospital_admin":
       store.hospitalAdminProfiles.push({ ...base, profilePhotoUrl: null, hospitalId: 1, notificationEmail: true, notificationSms: true, licenseExpiry: "2027-12-31", ...profile });
+      break;
+    case "hospital_doctor":
+    case "hospital_reception":
+    case "hospital_staff":
+      store.hospitalStaffProfiles.push({
+        ...base,
+        profilePhotoUrl: null,
+        fullName: profile.fullName,
+        hospitalId: profile.hospitalId || null,
+        hospitalOwnerId: profile.hospitalOwnerId || null,
+        staffRole: profile.staffRole || user.roleSlug.replace("hospital_", ""),
+        department: profile.department || null,
+        designation: profile.designation || null
+      });
       break;
     case "super_admin":
       store.superAdminProfiles.push({ ...base, profilePhotoUrl: null, apiKeysEnabled: true, ...profile });
@@ -368,6 +409,10 @@ function getProfile(user) {
       return store.dispatcherProfiles.find(p => p.userId === user.id);
     case "hospital_admin":
       return store.hospitalAdminProfiles.find(p => p.userId === user.id);
+    case "hospital_doctor":
+    case "hospital_reception":
+    case "hospital_staff":
+      return store.hospitalStaffProfiles.find(p => p.userId === user.id);
     case "super_admin":
       return store.superAdminProfiles.find(p => p.userId === user.id);
     case "customer":
