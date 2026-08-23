@@ -719,10 +719,20 @@ async function patientApi(path, options = {}) {
       const refreshData = await refreshRes.json();
       patientState.accessToken = refreshData.accessToken;
       sessionStorage.setItem(`${PATIENT_KEY}_token`, refreshData.accessToken);
+      // The server rotates refresh tokens on every use — persist the new one,
+      // or the next refresh would be (correctly) treated as token replay.
+      if (refreshData.refreshToken) {
+        patientState.refreshToken = refreshData.refreshToken;
+        sessionStorage.setItem(`${PATIENT_KEY}_refresh`, refreshData.refreshToken);
+      }
       return patientApi(path, { ...options, _retried: true });
     }
     clearPatientAuth();
     updateAccountNav();
+    window.history.replaceState(null, "", "/?auth=signin&session=expired");
+    openPanel("account-panel");
+    setAccountView("signin");
+    setFormError("signin-form-error", "Your session expired. Please sign in again.");
     throw new Error("Your session has expired. Please sign in again.");
   }
 
@@ -1277,3 +1287,16 @@ document.getElementById("account-signout-btn").addEventListener("click", async (
 });
 
 updateAccountNav();
+
+// A protected ERP/profile session can expire while the user is working there.
+// Return them to the familiar main-site sign-in instead of the admin-only auth
+// page, so every account role can sign in again from one place.
+const authRedirect = new URLSearchParams(window.location.search);
+if (authRedirect.get("auth") === "signin") {
+  history.replaceState(null, "", "/");
+  openPanel("account-panel");
+  setAccountView("signin");
+  if (authRedirect.get("session") === "expired") {
+    setFormError("signin-form-error", "Your session expired. Please sign in again.");
+  }
+}

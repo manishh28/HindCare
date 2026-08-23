@@ -1,14 +1,14 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>HindCare — Book an ambulance fast</title>
+    <title>HindCare - Book an ambulance fast</title>
     <meta name="description" content="HindCare connects patients with the nearest available ambulance and hospital network, plus onboarding for hospital and fleet partners.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://unpkg.com/lenis@1.3.26/dist/lenis.css">
+    <link rel="stylesheet" href="/assets/vendor/lenis.css">
     <link rel="stylesheet" href="/styles.css?v=phase4-my-booking-2">
   </head>
   <body>
@@ -29,12 +29,12 @@
       </nav>
 
       <button type="button" class="mobile-nav-toggle" id="mobile-nav-toggle" aria-expanded="false" aria-controls="mobile-nav-menu" aria-label="Open menu">
-        <span id="mobile-nav-icon" aria-hidden="true">☰</span>
+        <span id="mobile-nav-icon" aria-hidden="true">&#9776;</span>
       </button>
 
       <nav class="mobile-nav-menu" id="mobile-nav-menu" aria-label="Mobile navigation">
         <a href="#quick-book" class="mobile-nav-primary" data-mobile-nav-item>
-          <span aria-hidden="true">🚑</span> Book an ambulance
+          <span aria-hidden="true">&#128657;</span> Book an ambulance
         </a>
         <button type="button" data-open="my-booking-panel" data-mobile-nav-item>My booking</button>
         <button type="button" data-open="network-panel" data-mobile-nav-item>Network</button>
@@ -45,7 +45,7 @@
     </header>
 
     <!--
-      NOTE: +91-1800-000-000 is a placeholder — it does not connect to
+      NOTE: +91-1800-000-000 is a placeholder - it does not connect to
       anyone. Replace it with a real, staffed number before this is used
       outside of local testing.
     -->
@@ -57,7 +57,7 @@
       </span>
       <span class="emergency-strip-text">
         <strong>Can't fill out a form right now?</strong>
-        Call our emergency line directly — <span class="emergency-strip-number">+91 1800-000-000</span>
+        Call our emergency line directly - <span class="emergency-strip-number">+91 1800-000-000</span>
       </span>
     </a>
 
@@ -67,7 +67,7 @@
         <div class="hero-copy">
           <p class="eyebrow">[ EMERGENCY AMBULANCE BOOKING ]</p>
           <h1>Every minute matters.</h1>
-          <p class="hero-sub">Share your location and we match you with the nearest available ambulance and hospital — then you can follow the booking status the whole way.</p>
+          <p class="hero-sub">Share your location and we match you with the nearest available ambulance and hospital - then you can follow the booking status the whole way.</p>
           <div class="hero-actions">
             <a class="cta-primary" href="#quick-book">
               <span class="pulse-dot" aria-hidden="true"></span>
@@ -84,19 +84,19 @@
 
           <div class="stats-strip" id="hero-stats" aria-label="Current network status">
             <div class="stat-tile">
-              <strong id="stat-fleet">—</strong>
+              <strong id="stat-fleet">-</strong>
               <span>Ambulances ready</span>
             </div>
             <div class="stat-tile">
-              <strong id="stat-hospitals">—</strong>
+              <strong id="stat-hospitals">-</strong>
               <span>Hospitals in network</span>
             </div>
             <div class="stat-tile">
-              <strong id="stat-cities">—</strong>
+              <strong id="stat-cities">-</strong>
               <span>Cities covered</span>
             </div>
             <div class="stat-tile">
-              <strong id="stat-distance">—</strong>
+              <strong id="stat-distance">-</strong>
               <span>Avg. dispatch distance</span>
             </div>
           </div>
@@ -166,7 +166,7 @@
                   <rect x="165" y="59" width="10" height="10" rx="2.2" fill="#374151" />
                   <ellipse cx="169.5" cy="50" rx="4" ry="3.1" fill="#ffe38a" />
 
-                  <!-- wheels — tucked up into the body so they read as attached, not floating -->
+                  <!-- wheels - tucked up into the body so they read as attached, not floating -->
                   <g class="wheel-spin">
                     <circle cx="46" cy="68" r="17" fill="url(#tireShade)" stroke="#8b95a8" stroke-width="1.2" />
                     <circle cx="46" cy="68" r="9" fill="#e5e9ee" />
@@ -254,7 +254,7 @@
             Destination hospital
             <span class="field-hint" id="destination-hint"></span>
             <select name="hospitalId" id="destination-select" required>
-              <option value="">Loading hospitals…</option>
+              <option value="">Loading hospitals...</option>
             </select>
           </label>
 
@@ -293,7 +293,7 @@
       <section class="panel-shell" id="tips">
         <p class="eyebrow">[ WHILE YOU WAIT ]</p>
         <h2>What to do until the ambulance arrives</h2>
-        <p class="section-sub">General guidance for common emergencies — not a substitute for professional medical care.</p>
+        <p class="section-sub">General guidance for common emergencies - not a substitute for professional medical care.</p>
 
         <div class="tips-grid">
           <article class="tip-card">
@@ -306,10 +306,10 @@
             </ul>
           </article>
           <article class="tip-card">
-            <h4>Stroke — think FAST</h4>
+            <h4>Stroke - think FAST</h4>
             <ul>
-              <li><strong>Face:</strong> ask them to smile — does one side droop?</li>
-              <li><strong>Arms:</strong> ask them to raise both — does one drift down?</li>
+              <li><strong>Face:</strong> ask them to smile - does one side droop?</li>
+              <li><strong>Arms:</strong> ask them to raise both - does one drift down?</li>
               <li><strong>Speech:</strong> is it slurred or strange?</li>
               <li><strong>Time:</strong> note when it started, call right away</li>
             </ul>
@@ -329,7 +329,7 @@
               <li>Help them sit upright, not lying down</li>
               <li>Loosen clothing around neck and chest</li>
               <li>Help them use their own inhaler, if prescribed</li>
-              <li>Stay calm — anxiety can worsen breathlessness</li>
+              <li>Stay calm - anxiety can worsen breathlessness</li>
             </ul>
           </article>
         </div>
@@ -379,7 +379,7 @@
       </div>
 
       <div class="footer-bottom">
-        <p class="footer-copy">&copy; <span id="footer-year"></span> HindCare MedTech. Demo prototype — not a live emergency service.</p>
+        <p class="footer-copy">&copy; <span id="footer-year"></span> HindCare MedTech. Demo prototype - not a live emergency service.</p>
       </div>
     </footer>
 
@@ -404,7 +404,7 @@
     <div class="chat-panel hidden" id="chat-panel">
       <div class="chat-panel-header">
         <span>HindCare assistant</span>
-        <button type="button" class="panel-close" data-close="chat-panel" aria-label="Close assistant">✕</button>
+        <button type="button" class="panel-close" data-close="chat-panel" aria-label="Close assistant">&times;</button>
       </div>
       <div class="chat-panel-body">
         <div class="chat-transcript" id="chat-transcript" aria-live="polite"></div>
@@ -418,7 +418,7 @@
     <!-- ============ PARTNER SIGN-UP (modal) ============ -->
     <div class="overlay-backdrop hidden" id="network-panel-backdrop" data-close="network-panel">
       <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="network-panel-title" id="network-panel">
-        <button type="button" class="panel-close" data-close="network-panel" aria-label="Close network status">✕</button>
+        <button type="button" class="panel-close" data-close="network-panel" aria-label="Close network status">&times;</button>
         <p class="eyebrow">[ FLEET REGISTRY ]</p>
         <h2 id="network-panel-title">Live network status</h2>
         <div class="network-grid">
@@ -440,15 +440,15 @@
 
     <div class="overlay-backdrop hidden" id="contact-panel-backdrop" data-close="contact-panel">
       <div class="modal-panel modal-panel-narrow" role="dialog" aria-modal="true" aria-labelledby="contact-panel-title" id="contact-panel">
-        <button type="button" class="panel-close" data-close="contact-panel" aria-label="Close contact">✕</button>
+        <button type="button" class="panel-close" data-close="contact-panel" aria-label="Close contact">&times;</button>
         <p class="eyebrow">[ CONTACT ]</p>
         <h2 id="contact-panel-title">Contact us</h2>
-        <p class="section-sub">Questions about bookings, partnerships, or this demo — reach out using the channels below.</p>
+        <p class="section-sub">Questions about bookings, partnerships, or this demo - reach out using the channels below.</p>
         <ul class="legal-list">
           <li><strong>Emergency booking line (placeholder):</strong> <a href="tel:+911800000000">+91 1800-000-000</a></li>
           <li><strong>Patient &amp; booking support:</strong> <a href="mailto:support@hindcare.example">support@hindcare.example</a></li>
           <li><strong>Hospital &amp; fleet partnerships:</strong> <a href="mailto:partners@hindcare.example">partners@hindcare.example</a></li>
-          <li><strong>Hours (demo):</strong> Mon–Sun, 24×7 for emergency line once live</li>
+          <li><strong>Hours (demo):</strong> Mon-Sun, 24x7 for emergency line once live</li>
         </ul>
         <p class="tip-disclaimer">For life-threatening emergencies, call your local emergency number immediately.</p>
       </div>
@@ -456,7 +456,7 @@
 
     <div class="overlay-backdrop hidden" id="terms-panel-backdrop" data-close="terms-panel">
       <div class="modal-panel modal-panel-narrow" role="dialog" aria-modal="true" aria-labelledby="terms-panel-title" id="terms-panel">
-        <button type="button" class="panel-close" data-close="terms-panel" aria-label="Close terms">✕</button>
+        <button type="button" class="panel-close" data-close="terms-panel" aria-label="Close terms">&times;</button>
         <p class="eyebrow">[ LEGAL ]</p>
         <h2 id="terms-panel-title">Terms &amp; conditions</h2>
         <p class="section-sub">Summary for the HindCare prototype. Replace with counsel-reviewed terms before any public launch.</p>
@@ -472,7 +472,7 @@
 
     <div class="overlay-backdrop hidden" id="privacy-panel-backdrop" data-close="privacy-panel">
       <div class="modal-panel modal-panel-narrow" role="dialog" aria-modal="true" aria-labelledby="privacy-panel-title" id="privacy-panel">
-        <button type="button" class="panel-close" data-close="privacy-panel" aria-label="Close privacy policy">✕</button>
+        <button type="button" class="panel-close" data-close="privacy-panel" aria-label="Close privacy policy">&times;</button>
         <p class="eyebrow">[ LEGAL ]</p>
         <h2 id="privacy-panel-title">Privacy policy</h2>
         <p class="section-sub">How we handle information in this prototype. Update before processing real patient data.</p>
@@ -480,7 +480,7 @@
           <p><strong>What we collect.</strong> Booking and partner forms may include name, phone, location, and email. The assistant chat stores messages in server memory for demo logging.</p>
           <p><strong>Why we use it.</strong> To match ambulances and hospitals, show booking status, onboard partners, and improve the service. We do not sell personal data.</p>
           <p><strong>Retention.</strong> Demo data lives in memory and resets when the server restarts. A production deployment will define retention, encryption, and access controls in a database.</p>
-          <p><strong>Sharing.</strong> In a live system, pickup and contact details would be shared only with assigned fleet operators, selected hospitals, and admins who need them for dispatch — not with the general public.</p>
+          <p><strong>Sharing.</strong> In a live system, pickup and contact details would be shared only with assigned fleet operators, selected hospitals, and admins who need them for dispatch - not with the general public.</p>
           <p><strong>Your choices.</strong> You can track a booking with booking ID and phone, or sign in to see your booking history. Contact support to request correction or deletion of your account.</p>
           <p><strong>Security.</strong> Do not submit real sensitive medical records in this demo. A production version will use encrypted storage, access controls, and audit logging.</p>
         </div>
@@ -489,15 +489,15 @@
 
     <div class="overlay-backdrop hidden" id="partner-panel-backdrop" data-close="partner-panel">
       <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="partner-panel-title" id="partner-panel">
-        <button type="button" class="panel-close" data-close="partner-panel" aria-label="Close partner sign-up">✕</button>
+        <button type="button" class="panel-close" data-close="partner-panel" aria-label="Close partner sign-up">&times;</button>
         <p class="eyebrow">[ PARTNER NETWORK ]</p>
         <h2 id="partner-panel-title">Join HindCare</h2>
-        <p class="section-sub">Hospitals and ambulance operators go through different onboarding — tell us which one you are.</p>
+        <p class="section-sub">Hospitals and ambulance operators go through different onboarding - tell us which one you are.</p>
 
         <label class="partner-type-picker">
           I am a
           <select id="partner-type-select">
-            <option value="">Choose one…</option>
+            <option value="">Choose one...</option>
             <option value="hospital">Hospital</option>
             <option value="ambulance">Ambulance / fleet operator</option>
           </select>
@@ -578,7 +578,7 @@
 
     <div class="overlay-backdrop hidden" id="account-panel-backdrop" data-close="account-panel">
       <div class="modal-panel modal-panel-narrow account-modal" role="dialog" aria-modal="true" aria-labelledby="account-panel-title" id="account-panel">
-        <button type="button" class="panel-close" data-close="account-panel" aria-label="Close account panel">✕</button>
+        <button type="button" class="panel-close" data-close="account-panel" aria-label="Close account panel">&times;</button>
         <p class="eyebrow">[ MY ACCOUNT ]</p>
 
         <!-- STATE: not signed in, choose sign in or create account -->
@@ -654,7 +654,7 @@
           </div>
 
           <p class="account-switch">Don't have an account? <button type="button" class="footer-link-button" id="signin-to-signup-btn">Create an account</button></p>
-          <button type="button" class="account-back-btn" id="signin-back-btn">← Back</button>
+          <button type="button" class="account-back-btn" id="signin-back-btn">&larr; Back</button>
         </div>
 
         <!-- STATE: create account -->
@@ -716,20 +716,20 @@
           </form>
 
           <p class="account-switch">Already have an account? <button type="button" class="footer-link-button" id="signup-to-signin-btn">Sign in</button></p>
-          <button type="button" class="account-back-btn" id="signup-back-btn">← Back</button>
+          <button type="button" class="account-back-btn" id="signup-back-btn">&larr; Back</button>
         </div>
 
         <!-- STATE: signed in dashboard -->
         <div class="account-view hidden" id="account-view-dashboard">
-          <h2>Hi, <span id="account-dashboard-name">there</span> 👋</h2>
+          <h2>Hi, <span id="account-dashboard-name">there</span>!</h2>
 
           <div class="account-section">
             <h3>Account details</h3>
 
             <dl class="account-detail-list" id="account-details-view">
-              <div class="account-detail-row"><dt>Full name</dt><dd id="detail-fullname">—</dd></div>
-              <div class="account-detail-row"><dt>Phone</dt><dd id="detail-phone">—</dd></div>
-              <div class="account-detail-row"><dt>Email</dt><dd id="detail-email">—</dd></div>
+              <div class="account-detail-row"><dt>Full name</dt><dd id="detail-fullname">-</dd></div>
+              <div class="account-detail-row"><dt>Phone</dt><dd id="detail-phone">-</dd></div>
+              <div class="account-detail-row"><dt>Email</dt><dd id="detail-email">-</dd></div>
             </dl>
             <button type="button" class="cta-secondary" id="edit-details-btn">Edit details</button>
 
@@ -767,7 +767,7 @@
 
     <div class="overlay-backdrop hidden" id="my-booking-panel-backdrop" data-close="my-booking-panel">
       <section class="modal-panel modal-panel-narrow my-booking-modal" role="dialog" aria-modal="true" aria-labelledby="my-booking-title" id="my-booking-panel">
-        <button type="button" class="panel-close" data-close="my-booking-panel" aria-label="Close my booking">✕</button>
+        <button type="button" class="panel-close" data-close="my-booking-panel" aria-label="Close my booking">&times;</button>
         <p class="eyebrow">[ YOUR BOOKING ]</p>
         <h2 id="my-booking-title">My ambulance booking</h2>
         <p class="account-intro">Your latest booking stays available here on this device.</p>
@@ -775,7 +775,7 @@
       </section>
     </div>
 
-    <script src="https://unpkg.com/lenis@1.3.26/dist/lenis.min.js"></script>
+    <script src="/assets/vendor/lenis.min.js"></script>
     <script src="/app.js?v=phase4-my-booking-2"></script>
   </body>
 </html>

@@ -19,7 +19,7 @@ async function profileApi(path, options = {}) {
   let response = await fetch(path, { ...options, headers });
   let data = await response.json().catch(() => ({}));
 
-  if (response.status === 401 && profileState.refreshToken) {
+  if (response.status === 401 && profileState.refreshToken && !options._retried) {
     const refreshRes = await fetch("/api/auth/refresh", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -29,9 +29,16 @@ async function profileApi(path, options = {}) {
       const refreshData = await refreshRes.json();
       profileState.accessToken = refreshData.accessToken;
       sessionStorage.setItem(`${PROFILE_STORAGE_KEY}_token`, refreshData.accessToken);
+      // The server rotates refresh tokens on every use — persist the new one,
+      // or the next refresh would be (correctly) treated as token replay.
+      if (refreshData.refreshToken) {
+        profileState.refreshToken = refreshData.refreshToken;
+        sessionStorage.setItem(`${PROFILE_STORAGE_KEY}_refresh`, refreshData.refreshToken);
+      }
       return profileApi(path, { ...options, _retried: true });
     }
-    window.location.href = "/auth/#/session-expired";
+    clearProfileAuth();
+    window.location.href = "/?auth=signin&session=expired";
     throw new Error("Session expired");
   }
 
@@ -40,6 +47,9 @@ async function profileApi(path, options = {}) {
 }
 
 function clearProfileAuth() {
+  profileState.accessToken = null;
+  profileState.refreshToken = null;
+  profileState.user = null;
   sessionStorage.removeItem(`${PROFILE_STORAGE_KEY}_token`);
   sessionStorage.removeItem(`${PROFILE_STORAGE_KEY}_refresh`);
   sessionStorage.removeItem(`${PROFILE_STORAGE_KEY}_user`);
@@ -47,7 +57,7 @@ function clearProfileAuth() {
 
 function requireAuth() {
   if (!profileState.accessToken) {
-    window.location.href = "/auth/#/roles";
+    window.location.href = "/?auth=signin";
     return false;
   }
   return true;
