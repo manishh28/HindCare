@@ -1,3 +1,15 @@
+// Smooth scrolling is limited to the document. Feature screens and menus
+// keep native scrolling so their controls stay predictable on mobile.
+if (window.Lenis) {
+  new window.Lenis({
+    autoRaf: true,
+    anchors: { offset: -88 },
+    smoothWheel: true,
+    respectReducedMotion: true,
+    prevent: node => Boolean(node?.closest?.(".overlay-backdrop, .chat-panel, .mobile-nav-menu"))
+  });
+}
+
 const state = {
   hospitals: [],
   ambulances: [],
@@ -283,22 +295,46 @@ const PANEL_TARGETS = {
   "contact-panel": "contact-panel-backdrop",
   "terms-panel": "terms-panel-backdrop",
   "privacy-panel": "privacy-panel-backdrop",
-  "account-panel": "account-panel-backdrop"
+  "account-panel": "account-panel-backdrop",
+  "my-booking-panel": "my-booking-panel-backdrop"
 };
 
 function panelElement(key) {
   return document.getElementById(PANEL_TARGETS[key] || key);
 }
 
-function openPanel(key) {
+let activePanelKey = null;
+
+function openPanel(key, options = {}) {
   const el = panelElement(key);
   if (el) el.classList.remove("hidden");
+  if (!options.fromHistory) {
+    const currentPanel = history.state?.hindcarePanel;
+    if (currentPanel) {
+      history.replaceState({ ...history.state, hindcarePanel: key }, "", `#${key}`);
+    } else if (currentPanel !== key) {
+      history.pushState({ hindcarePanel: key }, "", `#${key}`);
+    }
+  }
+  activePanelKey = key;
+  document.body.classList.add("feature-view-open");
   if (key === "account-panel") renderAccountPanel();
+  if (key === "my-booking-panel") loadSavedBooking();
 }
 
-function closePanel(key) {
+function closePanel(key, options = {}) {
+  if (!options.fromHistory && !options.skipHistory && history.state?.hindcarePanel === key) {
+    history.back();
+    return;
+  }
   const el = panelElement(key);
   if (el) el.classList.add("hidden");
+  if (activePanelKey === key) activePanelKey = null;
+  const chatOpen = !document.getElementById("chat-panel")?.classList.contains("hidden");
+  const featureOpen = document.querySelector(".overlay-backdrop:not(.hidden)");
+  if (!chatOpen && !featureOpen) {
+    document.body.classList.remove("feature-view-open");
+  }
 }
 
 document.querySelectorAll("[data-open]").forEach(button => {
@@ -327,8 +363,21 @@ document.addEventListener("keydown", event => {
     closePanel("terms-panel");
     closePanel("privacy-panel");
     closePanel("account-panel");
+    closePanel("my-booking-panel");
     closeMobileNav();
   }
+});
+
+window.addEventListener("popstate", event => {
+  const panelKey = event.state?.hindcarePanel;
+  if (panelKey) {
+    openPanel(panelKey, { fromHistory: true });
+    return;
+  }
+
+  ["chat-panel", ...Object.keys(PANEL_TARGETS)].forEach(key => {
+    closePanel(key, { fromHistory: true });
+  });
 });
 
 // ---- mobile hamburger menu ----
@@ -368,6 +417,30 @@ window.addEventListener("resize", () => {
 // Quick booking form
 // ---------------------------------------------------------------------
 
+async function loadSavedBooking() {
+  const content = document.getElementById("saved-booking-content");
+  let saved;
+  try {
+    saved = JSON.parse(sessionStorage.getItem("hindcare_latest_booking") || "null");
+  } catch {
+    saved = null;
+  }
+
+  if (!saved?.id || !saved.phone) {
+    content.innerHTML = `<div class="saved-booking-empty">No booking is saved on this device yet. Book an ambulance first and your latest booking will appear here.</div>`;
+    return;
+  }
+
+  content.textContent = "Loading your booking…";
+  try {
+    const booking = await api(`/api/bookings/lookup?id=${encodeURIComponent(saved.id)}&phone=${encodeURIComponent(saved.phone)}`);
+    content.innerHTML = renderTrackingDetails(booking);
+    startTrackingRefresh(saved.id, saved.phone, booking, "saved-booking-content");
+  } catch (error) {
+    content.innerHTML = `<div class="saved-booking-empty">${escapeHtml(error.message)}. You can create a new booking from the booking form.</div>`;
+  }
+}
+
 document.getElementById("booking-form").addEventListener("submit", async event => {
   event.preventDefault();
   const form = event.currentTarget;
@@ -379,23 +452,17 @@ document.getElementById("booking-form").addEventListener("submit", async event =
       method: "POST",
       body: JSON.stringify(formToObject(form))
     });
-    const ambulanceNote = booking.ambulanceId
-      ? `Ambulance ${state.ambulances.find(a => a.id === booking.ambulanceId)?.registrationNumber || booking.ambulanceId} is on the way${booking.dispatchDistanceKm != null ? ` (~${booking.dispatchDistanceKm} km out)` : ""}.`
-      : "No ambulance is free right now — you're first in line for the next one.";
     const bookingPhone = form.phone.value;
-    result.innerHTML = `<span>Booking #${escapeHtml(booking.id)} confirmed. ${escapeHtml(ambulanceNote)}</span><button type="button" class="track-confirmed-booking" id="track-confirmed-booking">View demo tracking map</button>`;
-    document.getElementById("track-confirmed-booking").addEventListener("click", () => {
-      document.getElementById("booking-track-id").value = booking.id;
-      document.querySelector("#tracker-form input[name=phone]").value = bookingPhone;
-      document.getElementById("tracker-form").scrollIntoView({ behavior: "smooth", block: "center" });
-      document.getElementById("tracker-form").requestSubmit();
-    });
+    sessionStorage.setItem("hindcare_latest_booking", JSON.stringify({ id: booking.id, phone: bookingPhone }));
+    result.textContent = "";
     form.reset();
     state.destinationManuallySet = false;
     await Promise.all([refreshBookings(), refreshAmbulances()]);
     populateDestinationSelect();
+    openPanel("my-booking-panel");
   } catch (error) {
     result.textContent = error.message;
+    result.classList.remove("hidden");
   }
 });
 
@@ -514,7 +581,7 @@ function estimatedArrivalMinutes(distanceKm) {
   return Math.max(1, Math.round((distanceKm / assumedSpeedKmh) * 60));
 }
 
-let trackingSimulationTimer = null;
+let trackingRefreshTimer = null;
 
 function trackingPoint(lat, lng) {
   if (!Number.isFinite(Number(lat)) || !Number.isFinite(Number(lng))) return null;
@@ -544,61 +611,41 @@ function renderTrackingMap(booking) {
         ${ambulance ? `<span class="tracking-marker ambulance-marker" id="tracking-ambulance-marker" style="left:${ambulance.x}%;top:${ambulance.y}%" title="Ambulance location" aria-label="Ambulance location">🚑</span>` : ""}
       </div>
       <div class="tracking-map-legend"><span><i class="legend-dot ambulance-legend"></i> Ambulance</span><span><i class="legend-dot pickup-legend"></i> Pickup</span><span><i class="legend-dot hospital-legend"></i> Hospital</span></div>
-      <p class="tracking-demo-note">Demo map only — movement is simulated and is not live GPS tracking.</p>
+      <p class="tracking-demo-note">Demo map view. When a driver sends GPS updates, this view refreshes automatically.</p>
     </div>`;
 }
 
-function startTrackingSimulation(booking) {
-  clearInterval(trackingSimulationTimer);
-  if (!booking.ambulance || !Number.isFinite(Number(booking.ambulance.currentLat)) || !Number.isFinite(Number(booking.pickupLat))) return;
-  if (["completed", "cancelled"].includes(booking.status)) return;
-
-  const start = { lat: Number(booking.ambulance.currentLat), lng: Number(booking.ambulance.currentLng) };
-  const end = { lat: Number(booking.pickupLat), lng: Number(booking.pickupLng) };
-  let progress = 0;
-  trackingSimulationTimer = setInterval(() => {
-    progress = Math.min(1, progress + 0.08);
-    const current = {
-      lat: start.lat + (end.lat - start.lat) * progress,
-      lng: start.lng + (end.lng - start.lng) * progress
-    };
-    const point = trackingPoint(current.lat, current.lng);
-    const marker = document.getElementById("tracking-ambulance-marker");
-    if (marker && point) {
-      marker.style.left = `${point.x}%`;
-      marker.style.top = `${point.y}%`;
-    }
-    if (progress >= 1) clearInterval(trackingSimulationTimer);
-  }, 1800);
+function renderTrackingDetails(booking) {
+  const eta = estimatedArrivalMinutes(booking.dispatchDistanceKm);
+  const showEta = eta != null && !["completed", "cancelled"].includes(booking.status);
+  return `
+    ${renderTrackingMap(booking)}
+    <div class="tracker-row"><span>Status</span>${statusChip(booking.status)}</div>
+    <div class="tracker-row"><span>Destination</span><span>${escapeHtml(booking.destination)}</span></div>
+    ${booking.ambulance
+      ? `<div class="tracker-row"><span>Ambulance</span><span>${escapeHtml(booking.ambulance.registrationNumber)}</span></div>
+         <div class="tracker-row"><span>Driver</span><span>${escapeHtml(booking.ambulance.driverName)}</span></div>`
+      : `<div class="tracker-row"><span>Ambulance</span><span>Not yet assigned</span></div>`}
+    ${showEta ? `<div class="tracker-row"><span>Est. arrival</span><span>~${Number(eta)} min (approx.)</span></div>` : ""}
+  `;
 }
 
-document.getElementById("tracker-form").addEventListener("submit", async event => {
-  event.preventDefault();
-  const { bookingId, phone } = formToObject(event.currentTarget);
-  const result = document.getElementById("tracker-result");
-  result.innerHTML = `<p>Looking up…</p>`;
+function startTrackingRefresh(bookingId, phone, booking, targetId = "saved-booking-content") {
+  clearInterval(trackingRefreshTimer);
+  if (["completed", "cancelled"].includes(booking.status)) return;
 
-  try {
-    const booking = await api(`/api/bookings/lookup?id=${encodeURIComponent(bookingId)}&phone=${encodeURIComponent(phone)}`);
-    const eta = estimatedArrivalMinutes(booking.dispatchDistanceKm);
-    const showEta = eta != null && !["completed", "cancelled"].includes(booking.status);
-
-    result.innerHTML = `
-      ${renderTrackingMap(booking)}
-      <div class="tracker-row"><span>Status</span>${statusChip(booking.status)}</div>
-      <div class="tracker-row"><span>Destination</span><span>${escapeHtml(booking.destination)}</span></div>
-      ${booking.ambulance
-        ? `<div class="tracker-row"><span>Ambulance</span><span>${escapeHtml(booking.ambulance.registrationNumber)}</span></div>
-           <div class="tracker-row"><span>Driver</span><span>${escapeHtml(booking.ambulance.driverName)}</span></div>`
-        : `<div class="tracker-row"><span>Ambulance</span><span>Not yet assigned</span></div>`}
-      ${showEta ? `<div class="tracker-row"><span>Est. arrival</span><span>~${Number(eta)} min (approx.)</span></div>` : ""}
-    `;
-    startTrackingSimulation(booking);
-  } catch (error) {
-    clearInterval(trackingSimulationTimer);
-    result.innerHTML = `<p>${escapeHtml(error.message)}</p>`;
-  }
-});
+  trackingRefreshTimer = setInterval(async () => {
+    try {
+      const latest = await api(`/api/bookings/lookup?id=${encodeURIComponent(bookingId)}&phone=${encodeURIComponent(phone)}`);
+      const result = document.getElementById(targetId);
+      if (!result) return;
+      result.innerHTML = renderTrackingDetails(latest);
+      if (["completed", "cancelled"].includes(latest.status)) clearInterval(trackingRefreshTimer);
+    } catch {
+      // Keep the last known tracking view when a temporary refresh fails.
+    }
+  }, 5000);
+}
 
 refreshDashboard().catch(error => {
   document.body.insertAdjacentHTML("afterbegin", `<p class="load-error">${escapeHtml(error.message)}</p>`);
@@ -1200,13 +1247,12 @@ async function loadAccountBookings() {
 
     list.querySelectorAll("[data-view-booking]").forEach(btn => {
       btn.addEventListener("click", () => {
-        const trackerForm = document.getElementById("tracker-form");
-        if (!trackerForm) return;
-        trackerForm.elements.bookingId.value = btn.dataset.viewBooking;
-        trackerForm.elements.phone.value = btn.dataset.viewPhone;
-        closePanel("account-panel");
-        trackerForm.scrollIntoView({ behavior: "smooth", block: "center" });
-        trackerForm.requestSubmit();
+        sessionStorage.setItem("hindcare_latest_booking", JSON.stringify({
+          id: btn.dataset.viewBooking,
+          phone: btn.dataset.viewPhone
+        }));
+        closePanel("account-panel", { skipHistory: true });
+        openPanel("my-booking-panel");
       });
     });
   } catch (error) {

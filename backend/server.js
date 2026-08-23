@@ -44,12 +44,20 @@ const path = require("path");
   }
 })();
 
+const pool = require("./db");
+
+
+pool.query("SELECT NOW()")
+  .then(() => console.log("PostgreSQL connected successfully"))
+  .catch(error => console.error("PostgreSQL connection failed:", error.code || error.message));
+
+
 const http = require("http");
 const { handleMessage, emptySession } = require("../chatbot/chatbot");
 const { handleAuthRoutes } = require("./auth/routes");
 const { handleProfileRoutes } = require("./profile/routes");
 const { authenticate, requireAuth, getRequestMeta } = require("./auth/middleware");
-const { ROLE_PERMISSIONS, findUserByEmail, findUserById, getProfile, store, seeded } = require("./auth/store");
+const { ROLE_PERMISSIONS, findUserById, getProfile, store } = require("./auth/store");
 
 // Rate limiting for the public write endpoints below (hospital/ambulance
 // onboarding, booking creation) — mirrors the same pattern already used in
@@ -109,46 +117,8 @@ const KNOWN_AREAS = [
 ];
 
 const db = {
-  hospitals: [
-    { id: 1, name: "HindCare Emergency Hospital", city: "Lucknow", address: "SGPGI Road, Lucknow", phone: "+91-9000000001", email: "contact@hindcare-hospital.example", lat: 26.8467, lng: 80.9462, emergencyAvailable: true, totalBeds: 120, availableBeds: 28, status: "approved", ownerId: null, departments: [
-      { name: "Emergency", status: "available" },
-      { name: "Cardiology", status: "available" },
-      { name: "ICU", status: "limited" }
-    ] },
-    { id: 2, name: "MedTech City Hospital", city: "Lucknow", address: "Gomti Nagar, Lucknow", phone: "+91-9000000002", email: "contact@medtechcity.example", lat: 26.8500, lng: 80.9500, emergencyAvailable: true, totalBeds: 80, availableBeds: 12, status: "approved", ownerId: null, departments: [
-      { name: "Emergency", status: "available" },
-      { name: "Orthopedics", status: "available" }
-    ] }
-  ],
-  ambulances: [
-    { id: 1, registrationNumber: "UP32 AB 1001", type: "advanced", driverName: "Rahul Singh", phone: "+91-9111111111", email: "rahul.singh@fleet.example", currentLat: 26.8467, currentLng: 80.9462, status: "available", ownerId: null, driverId: null },
-    { id: 2, registrationNumber: "UP32 AB 1002", type: "basic", driverName: "Amit Verma", phone: "+91-9222222222", email: "amit.verma@fleet.example", currentLat: 26.8500, currentLng: 80.9500, status: "busy", ownerId: null, driverId: null }
-  ],
-  bookings: [],
   chatbotLogs: []
 };
-
-// Link the demo hospital/ambulance records to real seeded owner accounts,
-// once those accounts actually exist (seeding is async). Anything created
-// from here on gets its ownerId set directly at creation time instead.
-seeded.then(() => {
-  const hospitalOwner = findUserByEmail("admin@hindcare-hospital.in");
-  if (hospitalOwner) {
-    db.hospitals[0].ownerId = hospitalOwner.id;
-    const profile = getProfile(hospitalOwner);
-    if (profile) profile.hospitalId = db.hospitals[0].id;
-  }
-
-  const fleetOwner = findUserByEmail("suresh@yadavambulance.in");
-  const driver = findUserByEmail("rahul.singh@fleet.hindcare.in");
-  if (fleetOwner) {
-    db.ambulances[0].ownerId = fleetOwner.id;
-    db.ambulances[1].ownerId = fleetOwner.id;
-  }
-  if (driver) {
-    db.ambulances[0].driverId = driver.id;
-  }
-}).catch(() => {});
 
 const chatSessions = new Map();
 
@@ -233,6 +203,61 @@ function nextId(items) {
   return items.length ? Math.max(...items.map(item => item.id)) + 1 : 1;
 }
 
+function bookingRowToApi(row) {
+  return {
+    id: Number(row.id),
+    patientName: row.patient_name,
+    phone: row.phone,
+    pickup: row.pickup,
+    destination: row.destination,
+    emergencyType: row.emergency_type,
+    ambulanceId: row.ambulance_id === null ? null : Number(row.ambulance_id),
+    assignedDriverId: row.assigned_driver_id === null
+      ? null
+      : Number(row.assigned_driver_id),
+    hospitalId: row.hospital_id === null
+      ? null
+      : Number(row.hospital_id),
+    customerId: row.customer_id === null
+      ? null
+      : Number(row.customer_id),
+    status: row.status,
+    notes: row.notes || "",
+    pickupLat: row.pickup_lat === null ? null : Number(row.pickup_lat),
+    pickupLng: row.pickup_lng === null ? null : Number(row.pickup_lng),
+    destinationLat: row.destination_lat === null
+      ? null
+      : Number(row.destination_lat),
+    destinationLng: row.destination_lng === null
+      ? null
+      : Number(row.destination_lng),
+    dispatchDistanceKm: row.dispatch_distance_km === null
+      ? null
+      : Number(row.dispatch_distance_km),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+function hospitalRowToApi(row) {
+  return {
+    id: Number(row.id),
+    name: row.name,
+    city: row.city,
+    address: row.address,
+    phone: row.phone,
+    email: row.email,
+    emergencyAvailable: row.emergency_available,
+    totalBeds: row.total_beds,
+    availableBeds: row.available_beds,
+    status: row.status,
+    lat: row.lat === null ? null : Number(row.lat),
+    lng: row.lng === null ? null : Number(row.lng),
+    ownerId: row.owner_id === null ? null : Number(row.owner_id),
+    departments: row.departments || []
+  };
+}
+
 // SEC-021: lightweight, dependency-free bot mitigation for public forms —
 // a hidden field real users never see or fill, but simple scripted bots
 // that blindly fill every input often do. Doesn't replace a real CAPTCHA
@@ -288,102 +313,11 @@ function haversineKm(a, b) {
   return 2 * R * Math.asin(Math.sqrt(h));
 }
 
-function findBestAmbulance(pickupText) {
-  const available = db.ambulances.filter(a => a.status === "available");
-  if (!available.length) return { ambulance: null, distanceKm: null };
-
-  const pickupPoint = geocodePickup(pickupText);
-  if (!pickupPoint) return { ambulance: available[0], distanceKm: null };
-
-  let best = null, bestDistance = Infinity;
-  for (const a of available) {
-    if (typeof a.currentLat !== "number" || typeof a.currentLng !== "number") continue;
-    const dist = haversineKm(pickupPoint, { lat: a.currentLat, lng: a.currentLng });
-    if (dist < bestDistance) { bestDistance = dist; best = a; }
-  }
-  return best ? { ambulance: best, distanceKm: Math.round(bestDistance * 10) / 10 } : { ambulance: available[0], distanceKm: null };
-}
-
 function isActiveBookingStatus(status) {
   return ["requested", "assigned", "on_route"].includes(status);
 }
 
-function driverOption(userId) {
-  const user = findUserById(userId);
-  if (!user || user.roleSlug !== "driver") return null;
-  const profile = getProfile(user);
-  if (!profile) return null;
-  return {
-    id: user.id,
-    fullName: profile.fullName,
-    phone: user.phone,
-    availabilityStatus: profile.availabilityStatus
-  };
-}
-
-function driverProfileById(userId) {
-  const user = findUserById(userId);
-  if (!user || user.roleSlug !== "driver") return null;
-  return getProfile(user);
-}
-
-function markDriverBusy(userId) {
-  const profile = driverProfileById(userId);
-  if (profile) {
-    profile.availabilityStatus = "busy";
-    profile.updatedAt = new Date().toISOString();
-  }
-}
-
-function releaseDriverIfFree(userId, currentBookingId = null) {
-  const profile = driverProfileById(userId);
-  if (!profile) return;
-  const hasOtherActiveTrip = db.bookings.some(booking =>
-    booking.id !== currentBookingId &&
-    booking.assignedDriverId === userId &&
-    ["assigned", "on_route"].includes(booking.status)
-  );
-  if (!hasOtherActiveTrip && profile.availabilityStatus === "busy") {
-    profile.availabilityStatus = "available";
-    profile.updatedAt = new Date().toISOString();
-  }
-}
-
-function bookingPublicDriver(booking) {
-  if (booking.assignedDriverId) {
-    const driver = driverOption(booking.assignedDriverId);
-    if (driver) return { fullName: driver.fullName };
-  }
-  const amb = booking.ambulanceId ? db.ambulances.find(a => a.id === booking.ambulanceId) : null;
-  return amb && amb.driverName ? { fullName: amb.driverName } : null;
-}
-
-function bookingsVisibleTo(user, bookings) {
-  if (["super_admin", "dispatcher"].includes(user.roleSlug)) return bookings;
-
-  if (user.roleSlug === "hospital_admin" || ["hospital_doctor", "hospital_reception"].includes(user.roleSlug)) {
-    const profile = getProfile(user);
-    return bookings.filter(booking => booking.hospitalId && booking.hospitalId === profile?.hospitalId);
-  }
-
-  if (user.roleSlug === "fleet_owner") {
-    return bookings.filter(booking => {
-      const ambulance = booking.ambulanceId ? db.ambulances.find(a => a.id === booking.ambulanceId) : null;
-      return ambulance?.ownerId === user.id;
-    });
-  }
-
-  if (user.roleSlug === "driver") {
-    return bookings.filter(booking => {
-      const ambulance = booking.ambulanceId ? db.ambulances.find(a => a.id === booking.ambulanceId) : null;
-      return booking.assignedDriverId === user.id || ambulance?.driverId === user.id;
-    });
-  }
-
-  return [];
-}
-
-function createBooking(body, customerId = null) {
+  async function createBooking(body, customerId = null) {
   const missing = requireFields(body, ["patientName", "phone", "pickup"]);
   if (!String(body.destination || "").trim() && !body.hospitalId) missing.push("destination");
   if (missing.length) return { statusCode: 400, error: "Missing required fields", fields: missing };
@@ -396,45 +330,138 @@ function createBooking(body, customerId = null) {
     return { statusCode: 400, error: `emergencyType must be one of: ${EMERGENCY_TYPES.join(", ")}` };
   }
 
-  let hospital = null;
-  if (body.hospitalId) {
-    hospital = db.hospitals.find(h => h.id === Number(body.hospitalId));
-    if (!hospital) return { statusCode: 400, error: "hospitalId does not match a known hospital" };
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    let hospital = null;
+    if (body.hospitalId) {
+      const hospitalResult = await client.query(
+        "SELECT id, name, lat, lng FROM hospitals WHERE id = $1",
+        [Number(body.hospitalId)]
+      );
+      hospital = hospitalResult.rows[0] || null;
+      if (!hospital) {
+        await client.query("ROLLBACK");
+        return { statusCode: 400, error: "hospitalId does not match a known hospital" };
+      }
+    }
+
+    const pickupPoint = geocodePickup(body.pickup);
+    const destinationPoint = hospital
+      ? { lat: Number(hospital.lat), lng: Number(hospital.lng) }
+      : geocodePickup(body.destination);
+
+    const ambulanceResult = await client.query(`
+      SELECT id, current_lat, current_lng, driver_id
+      FROM ambulances
+      WHERE status = 'available'
+      ORDER BY id
+      FOR UPDATE
+    `);
+    const availableAmbulances = ambulanceResult.rows;
+    const ambulance = availableAmbulances.length
+      ? availableAmbulances.reduce((closest, candidate) => {
+        if (!pickupPoint) return closest || candidate;
+
+        const candidateDistance = candidate.current_lat === null || candidate.current_lng === null
+          ? Infinity
+          : haversineKm(pickupPoint, {
+            lat: Number(candidate.current_lat),
+            lng: Number(candidate.current_lng)
+          });
+        const closestDistance = !closest || closest.current_lat === null || closest.current_lng === null
+          ? Infinity
+          : haversineKm(pickupPoint, {
+            lat: Number(closest.current_lat),
+            lng: Number(closest.current_lng)
+          });
+
+        return candidateDistance < closestDistance ? candidate : closest;
+      }, null)
+      : null;
+    const ambulancePoint = ambulance && ambulance.current_lat !== null
+      ? { lat: Number(ambulance.current_lat), lng: Number(ambulance.current_lng) }
+      : null;
+    const distanceKm = pickupPoint && ambulancePoint
+      ? Math.round(haversineKm(pickupPoint, ambulancePoint) * 10) / 10
+      : null;
+    const assignedDriverId = ambulance?.driver_id || null;
+    const status = ambulance ? "assigned" : "requested";
+    let dbCustomerId = null;
+
+    if (customerId) {
+      const customerResult = await client.query(
+        "SELECT id FROM users WHERE id = $1",
+        [Number(customerId)]
+      );
+      dbCustomerId = customerResult.rows[0]?.id || null;
+    }
+
+    const bookingResult = await client.query(`
+      INSERT INTO bookings (
+        patient_name, phone, pickup, destination, emergency_type,
+        ambulance_id, assigned_driver_id, hospital_id, status, notes,
+        customer_id, pickup_lat, pickup_lng, destination_lat,
+        destination_lng, dispatch_distance_km, updated_at
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, CURRENT_TIMESTAMP)
+      RETURNING *
+    `, [
+      String(body.patientName).trim().slice(0, 120),
+      String(body.phone).trim(),
+      String(body.pickup).trim().slice(0, 200),
+      hospital ? hospital.name : String(body.destination).trim().slice(0, 200),
+      emergencyType,
+      ambulance?.id || null,
+      assignedDriverId,
+      hospital?.id || null,
+      status,
+      body.notes ? String(body.notes).trim().slice(0, 500) : "",
+      dbCustomerId,
+      pickupPoint?.lat ?? null,
+      pickupPoint?.lng ?? null,
+      destinationPoint?.lat ?? null,
+      destinationPoint?.lng ?? null,
+      distanceKm
+    ]);
+
+    if (ambulance) {
+      await client.query("UPDATE ambulances SET status = 'busy' WHERE id = $1", [ambulance.id]);
+    }
+    await client.query("COMMIT");
+
+    const row = bookingResult.rows[0];
+    const booking = {
+      id: Number(row.id),
+      patientName: row.patient_name,
+      phone: row.phone,
+      pickup: row.pickup,
+      destination: row.destination,
+      pickupLat: row.pickup_lat === null ? null : Number(row.pickup_lat),
+      pickupLng: row.pickup_lng === null ? null : Number(row.pickup_lng),
+      destinationLat: row.destination_lat === null ? null : Number(row.destination_lat),
+      destinationLng: row.destination_lng === null ? null : Number(row.destination_lng),
+      hospitalId: row.hospital_id === null ? null : Number(row.hospital_id),
+      customerId: row.customer_id === null ? null : Number(row.customer_id),
+      emergencyType: row.emergency_type,
+      ambulanceId: row.ambulance_id === null ? null : Number(row.ambulance_id),
+      assignedDriverId: row.assigned_driver_id === null ? null : Number(row.assigned_driver_id),
+      dispatchDistanceKm: row.dispatch_distance_km === null ? null : Number(row.dispatch_distance_km),
+      status: row.status,
+      notes: row.notes || "",
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    };
+
+    return { statusCode: 201, booking };
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    console.error("Failed to create booking in PostgreSQL:", error.message);
+    return { statusCode: 500, error: "Unable to create booking" };
+  } finally {
+    client.release();
   }
-
-  const pickupPoint = geocodePickup(body.pickup);
-  const destinationPoint = hospital
-    ? { lat: hospital.lat, lng: hospital.lng }
-    : geocodePickup(body.destination);
-
-  const { ambulance, distanceKm } = findBestAmbulance(body.pickup);
-  const assignedDriverId = ambulance && ambulance.driverId ? ambulance.driverId : null;
-  const booking = {
-    id: nextId(db.bookings),
-    patientName: String(body.patientName).trim().slice(0, 120),
-    phone: String(body.phone).trim(),
-    pickup: String(body.pickup).trim().slice(0, 200),
-    destination: hospital ? hospital.name : String(body.destination).trim().slice(0, 200),
-    pickupLat: pickupPoint?.lat ?? null,
-    pickupLng: pickupPoint?.lng ?? null,
-    destinationLat: destinationPoint?.lat ?? null,
-    destinationLng: destinationPoint?.lng ?? null,
-    hospitalId: hospital ? hospital.id : null,
-    customerId,
-    emergencyType,
-    ambulanceId: ambulance ? ambulance.id : null,
-    assignedDriverId,
-    dispatchDistanceKm: distanceKm,
-    status: ambulance ? "assigned" : "requested",
-    notes: body.notes ? String(body.notes).trim().slice(0, 500) : "",
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  };
-
-  if (ambulance) ambulance.status = "busy";
-  if (assignedDriverId) markDriverBusy(assignedDriverId);
-  db.bookings.push(booking);
-  return { statusCode: 201, booking };
 }
 
 // ---------------------------------------------------------------------
@@ -553,17 +580,109 @@ async function handleApi(req, res) {
 
   // ----------- Production auth & profile modules -----------
   if (await handleAuthRoutes(req, res, url, parseBody, sendJson)) return;
-  if (await handleProfileRoutes(req, res, url, parseBody, sendJson, db)) return;
+  if (await handleProfileRoutes(req, res, url, parseBody, sendJson, pool)) return;
+
+  // Driver GPS updates are accepted only from the authenticated driver linked
+  // to an ambulance with an active booking.
+  if (req.method === "PATCH" && url.pathname === "/api/driver/location") {
+    const auth = requireAuth(req, res, sendJson);
+    if (!auth) return;
+    if (auth.user.roleSlug !== "driver") {
+      sendJson(req, res, 403, { error: "Only a driver can update ambulance location.", code: "FORBIDDEN" });
+      return;
+    }
+    if (!checkPublicWriteRateLimit(`driver-location:${auth.user.id}`)) {
+      sendJson(req, res, 429, { error: "Location updates are temporarily limited.", code: "RATE_LIMITED" });
+      return;
+    }
+
+    const body = await parseBody(req);
+    const latitude = Number(body.latitude);
+    const longitude = Number(body.longitude);
+    if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90 ||
+        !Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+      sendJson(req, res, 400, { error: "latitude must be between -90 and 90 and longitude between -180 and 180." });
+      return;
+    }
+
+    try {
+      const result = await pool.query(
+        `
+          UPDATE ambulances a
+          SET current_lat = $1, current_lng = $2
+          WHERE a.driver_id = $3
+            AND EXISTS (
+              SELECT 1
+              FROM bookings b
+              WHERE b.ambulance_id = a.id
+                AND b.status IN ('assigned', 'on_route')
+            )
+          RETURNING a.id, a.registration_number, a.current_lat, a.current_lng
+        `,
+        [latitude, longitude, auth.user.id]
+      );
+      if (!result.rows[0]) {
+        sendJson(req, res, 409, { error: "You are not linked to an ambulance with an active trip." });
+        return;
+      }
+
+      const row = result.rows[0];
+      sendJson(req, res, 200, {
+        ambulanceId: Number(row.id),
+        registrationNumber: row.registration_number,
+        latitude: Number(row.current_lat),
+        longitude: Number(row.current_lng),
+        updatedAt: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error("Failed to update driver location:", error.message);
+      sendJson(req, res, 500, { error: "Unable to update driver location" });
+    }
+    return;
+  }
 
   // ----------- Hospitals -----------
   if (req.method === "GET" && url.pathname === "/api/hospitals") {
-    const city = url.searchParams.get("city");
-    const hospitals = city
-      ? db.hospitals.filter(h => h.city.toLowerCase() === city.toLowerCase())
-      : db.hospitals;
-    sendJson(req, res, 200, hospitals);
-    return;
+  const city = url.searchParams.get("city");
+
+  try {
+    const result = await pool.query(
+      `
+        SELECT
+          id,
+          name,
+          city,
+          address,
+          phone,
+          email,
+          emergency_available AS "emergencyAvailable",
+          total_beds AS "totalBeds",
+          available_beds AS "availableBeds",
+          status,
+          lat,
+          lng,
+          owner_id AS "ownerId",
+          departments
+        FROM hospitals
+        WHERE status = 'approved'
+          AND ($1::text IS NULL OR LOWER(city) = LOWER($1))
+        ORDER BY id
+      `,
+      [city || null]
+    );
+
+    sendJson(req, res, 200, result.rows);
+  } catch (error) {
+    console.error("Failed to load hospitals:", error.message);
+    sendJson(req, res, 500, {
+      error: "Unable to load hospitals"
+    });
   }
+
+  return;
+}
+
+
   if (req.method === "POST" && url.pathname === "/api/hospitals") {
     const auth = requireAuth(req, res, sendJson);
     if (!auth) return;
@@ -586,26 +705,53 @@ async function handleApi(req, res) {
     if (missing.length) { sendJson(req, res, 400, { error: "Missing required fields", fields: missing }); return; }
     if (!PHONE_PATTERN.test(String(body.phone).trim())) { sendJson(req, res, 400, { error: "phone must be a valid phone number" }); return; }
     if (!EMAIL_PATTERN.test(String(body.email).trim())) { sendJson(req, res, 400, { error: "email must be a valid email address" }); return; }
-    const hospital = {
-      id: nextId(db.hospitals),
-      name: String(body.name).trim().slice(0, 150), city: String(body.city).trim().slice(0, 80), address: String(body.address).trim().slice(0, 250),
-      phone: String(body.phone).trim(), email: String(body.email).trim().toLowerCase(),
-      emergencyAvailable: Boolean(body.emergencyAvailable ?? true), totalBeds: Number(body.totalBeds || 0),
-      availableBeds: Number(body.availableBeds || 0), status: "pending",
-      ownerId: auth.user.id, departments: []
-    };
-    db.hospitals.push(hospital);
-    if (profile) profile.hospitalId = hospital.id;
-    sendJson(req, res, 201, hospital);
+    try {
+      const result = await pool.query(
+        `
+          INSERT INTO hospitals (
+            name, city, address, phone, email, emergency_available,
+            total_beds, available_beds, status, owner_id, departments
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', $9, '[]'::jsonb)
+          RETURNING *
+        `,
+        [
+          String(body.name).trim().slice(0, 150),
+          String(body.city).trim().slice(0, 80),
+          String(body.address).trim().slice(0, 250),
+          String(body.phone).trim(),
+          String(body.email).trim().toLowerCase(),
+          Boolean(body.emergencyAvailable ?? true),
+          Math.max(0, Number(body.totalBeds || 0)),
+          Math.max(0, Number(body.availableBeds || 0)),
+          auth.user.id
+        ]
+      );
+      const hospital = hospitalRowToApi(result.rows[0]);
+      if (profile) profile.hospitalId = hospital.id;
+      sendJson(req, res, 201, hospital);
+    } catch (error) {
+      console.error("Failed to register hospital:", error.message);
+      sendJson(req, res, 500, { error: "Unable to register hospital" });
+    }
     return;
   }
   const hospitalMatch = url.pathname.match(/^\/api\/hospitals\/(\d+)$/);
   if (req.method === "PATCH" && hospitalMatch) {
     const auth = requireAuth(req, res, sendJson);
     if (!auth) return;
-    const hospital = db.hospitals.find(h => h.id === Number(hospitalMatch[1]));
-    if (!hospital) { sendJson(req, res, 404, { error: "Hospital not found" }); return; }
     const body = await parseBody(req);
+
+    let hospitalResult;
+    try {
+      hospitalResult = await pool.query("SELECT * FROM hospitals WHERE id = $1", [Number(hospitalMatch[1])]);
+    } catch (error) {
+      sendJson(req, res, 500, { error: "Unable to load hospital" });
+      return;
+    }
+    const hospitalRow = hospitalResult.rows[0];
+    if (!hospitalRow) { sendJson(req, res, 404, { error: "Hospital not found" }); return; }
+    const hospital = hospitalRowToApi(hospitalRow);
 
     // Approving/rejecting a hospital is an admin-only action — never the owner's own call.
     if (body.status !== undefined) {
@@ -614,8 +760,11 @@ async function handleApi(req, res) {
         return;
       }
       if (!HOSPITAL_STATUSES.includes(body.status)) { sendJson(req, res, 400, { error: `status must be one of: ${HOSPITAL_STATUSES.join(", ")}` }); return; }
-      hospital.status = body.status;
-      sendJson(req, res, 200, hospital);
+      const result = await pool.query(
+        "UPDATE hospitals SET status = $1 WHERE id = $2 RETURNING *",
+        [body.status, hospital.id]
+      );
+      sendJson(req, res, 200, hospitalRowToApi(result.rows[0]));
       return;
     }
 
@@ -638,36 +787,75 @@ async function handleApi(req, res) {
       return;
     }
 
-    if (body.totalBeds !== undefined) hospital.totalBeds = Math.max(0, Number(body.totalBeds) || 0);
-    if (body.availableBeds !== undefined) hospital.availableBeds = Math.max(0, Math.min(hospital.totalBeds, Number(body.availableBeds) || 0));
-    if (body.emergencyAvailable !== undefined) hospital.emergencyAvailable = Boolean(body.emergencyAvailable);
+    const updates = [];
+    const values = [];
+    const addUpdate = (column, value) => { values.push(value); updates.push(`${column} = $${values.length}`); };
+    const totalBeds = body.totalBeds !== undefined ? Math.max(0, Number(body.totalBeds) || 0) : hospital.totalBeds;
+    if (body.totalBeds !== undefined) addUpdate("total_beds", totalBeds);
+    if (body.availableBeds !== undefined) addUpdate("available_beds", Math.max(0, Math.min(totalBeds, Number(body.availableBeds) || 0)));
+    if (body.emergencyAvailable !== undefined) addUpdate("emergency_available", Boolean(body.emergencyAvailable));
     if (body.phone !== undefined) {
       if (!PHONE_PATTERN.test(String(body.phone).trim())) { sendJson(req, res, 400, { error: "phone must be a valid phone number" }); return; }
-      hospital.phone = String(body.phone).trim();
+      addUpdate("phone", String(body.phone).trim());
     }
-    if (body.address !== undefined) hospital.address = String(body.address).trim().slice(0, 250);
+    if (body.address !== undefined) addUpdate("address", String(body.address).trim().slice(0, 250));
     if (Array.isArray(body.departments)) {
       const validStatuses = ["available", "limited", "unavailable"];
-      hospital.departments = body.departments
+      const departments = body.departments
         .filter(d => d && String(d.name || "").trim())
         .slice(0, 30)
         .map(d => ({
           name: String(d.name).trim().slice(0, 60),
           status: validStatuses.includes(d.status) ? d.status : "available"
         }));
+      addUpdate("departments", JSON.stringify(departments));
     }
-    sendJson(req, res, 200, hospital);
+    if (!updates.length) { sendJson(req, res, 200, hospital); return; }
+    values.push(hospital.id);
+    const result = await pool.query(`UPDATE hospitals SET ${updates.join(", ")} WHERE id = $${values.length} RETURNING *`, values);
+    sendJson(req, res, 200, hospitalRowToApi(result.rows[0]));
     return;
   }
 
   // ----------- Ambulances -----------
   if (req.method === "GET" && url.pathname === "/api/ambulances") {
-    const auth = authenticate(req);
-    const isStaff = auth && auth.user.roleSlug !== "customer";
-    const ambulances = isStaff ? db.ambulances : db.ambulances.map(({ driverName, phone, email, ...rest }) => rest);
+  const auth = authenticate(req);
+  const isStaff = auth && auth.user.roleSlug !== "customer";
+
+  try {
+    const result = await pool.query(`
+      SELECT
+        id,
+        registration_number AS "registrationNumber",
+        type,
+        driver_name AS "driverName",
+        phone,
+        email,
+        current_lat AS "currentLat",
+        current_lng AS "currentLng",
+        status,
+        owner_id AS "ownerId",
+        driver_id AS "driverId"
+      FROM ambulances
+      ORDER BY id
+    `);
+
+    const ambulances = isStaff
+      ? result.rows
+      : result.rows.map(({ driverName, phone, email, ...publicAmbulance }) => publicAmbulance);
+
     sendJson(req, res, 200, ambulances);
-    return;
+  } catch (error) {
+    console.error("Failed to load ambulances:", error.message);
+    sendJson(req, res, 500, {
+      error: "Unable to load ambulances"
+    });
   }
+
+  return;
+}
+
+
   if (req.method === "POST" && url.pathname === "/api/ambulances") {
     const auth = requireAuth(req, res, sendJson);
     if (!auth) return;
@@ -686,42 +874,65 @@ async function handleApi(req, res) {
     if (!AMBULANCE_TYPES.includes(body.type)) { sendJson(req, res, 400, { error: `type must be one of: ${AMBULANCE_TYPES.join(", ")}` }); return; }
     if (!PHONE_PATTERN.test(String(body.phone).trim())) { sendJson(req, res, 400, { error: "phone must be a valid phone number" }); return; }
     if (!EMAIL_PATTERN.test(String(body.email).trim())) { sendJson(req, res, 400, { error: "email must be a valid email address" }); return; }
-    const ambulance = {
-      id: nextId(db.ambulances), registrationNumber: String(body.registrationNumber).trim().slice(0, 30), type: body.type,
-      driverName: String(body.driverName).trim().slice(0, 120), phone: String(body.phone).trim(), email: String(body.email).trim().toLowerCase(),
-      currentLat: body.currentLat !== undefined ? Number(body.currentLat) : null,
-      currentLng: body.currentLng !== undefined ? Number(body.currentLng) : null,
-      // Starts offline — the owner (now a real, verified account) switches
-      // it to available once it's actually ready, same safety default as
-      // before, just a self-service step instead of an admin gate.
-      status: "offline",
-      ownerId: auth.user.id, driverId: null
-    };
-    db.ambulances.push(ambulance);
-    sendJson(req, res, 201, ambulance);
+    try {
+      const result = await pool.query(
+        `
+          INSERT INTO ambulances (
+            registration_number, type, driver_name, phone, email,
+            current_lat, current_lng, status, owner_id
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, 'offline', $8)
+          RETURNING *
+        `,
+        [
+          String(body.registrationNumber).trim().slice(0, 30),
+          body.type,
+          String(body.driverName).trim().slice(0, 120),
+          String(body.phone).trim(),
+          String(body.email).trim().toLowerCase(),
+          body.currentLat !== undefined ? Number(body.currentLat) : null,
+          body.currentLng !== undefined ? Number(body.currentLng) : null,
+          auth.user.id
+        ]
+      );
+      const row = result.rows[0];
+      sendJson(req, res, 201, {
+        id: Number(row.id), registrationNumber: row.registration_number,
+        type: row.type, driverName: row.driver_name, phone: row.phone,
+        email: row.email, currentLat: row.current_lat, currentLng: row.current_lng,
+        status: row.status, ownerId: row.owner_id, driverId: row.driver_id
+      });
+    } catch (error) {
+      console.error("Failed to register ambulance:", error.message);
+      sendJson(req, res, 500, { error: "Unable to register ambulance" });
+    }
     return;
   }
   const ambulanceMatch = url.pathname.match(/^\/api\/ambulances\/(\d+)$/);
   if (req.method === "PATCH" && ambulanceMatch) {
     const auth = requireAuth(req, res, sendJson);
     if (!auth) return;
-    const ambulance = db.ambulances.find(a => a.id === Number(ambulanceMatch[1]));
-    if (!ambulance) { sendJson(req, res, 404, { error: "Ambulance not found" }); return; }
+    const ambulanceResult = await pool.query("SELECT * FROM ambulances WHERE id = $1", [Number(ambulanceMatch[1])]);
+    const ambulanceRow = ambulanceResult.rows[0];
+    if (!ambulanceRow) { sendJson(req, res, 404, { error: "Ambulance not found" }); return; }
 
-    const isOwner = auth.user.roleSlug === "fleet_owner" && ambulance.ownerId === auth.user.id;
+    const isOwner = auth.user.roleSlug === "fleet_owner" && Number(ambulanceRow.owner_id) === Number(auth.user.id);
     if (!isOwner && auth.user.roleSlug !== "super_admin") {
       sendJson(req, res, 403, { error: "You can only manage your own ambulances.", code: "FORBIDDEN" });
       return;
     }
 
     const body = await parseBody(req);
+    const updates = [];
+    const values = [];
+    const addUpdate = (column, value) => { values.push(value); updates.push(`${column} = $${values.length}`); };
     if (body.status !== undefined) {
       if (!AMBULANCE_STATUSES.includes(body.status)) { sendJson(req, res, 400, { error: `status must be one of: ${AMBULANCE_STATUSES.join(", ")}` }); return; }
-      ambulance.status = body.status;
+      addUpdate("status", body.status);
     }
     if (body.driverId !== undefined) {
       if (body.driverId === null) {
-        ambulance.driverId = null;
+        addUpdate("driver_id", null);
       } else {
         const driverProfile = getProfile({ id: Number(body.driverId), roleSlug: "driver" });
         const isMyDriver = driverProfile && driverProfile.fleetOwnerId === auth.user.id;
@@ -729,48 +940,137 @@ async function handleApi(req, res) {
           sendJson(req, res, 403, { error: "You can only assign drivers linked to your fleet.", code: "FORBIDDEN" });
           return;
         }
-        ambulance.driverId = Number(body.driverId);
+        addUpdate("driver_id", Number(body.driverId));
       }
     }
-    sendJson(req, res, 200, ambulance);
+    if (!updates.length) { sendJson(req, res, 200, ambulanceRow); return; }
+    values.push(Number(ambulanceMatch[1]));
+    const updated = await pool.query(`UPDATE ambulances SET ${updates.join(", ")} WHERE id = $${values.length} RETURNING *`, values);
+    const row = updated.rows[0];
+    sendJson(req, res, 200, {
+      id: Number(row.id), registrationNumber: row.registration_number, type: row.type,
+      driverName: row.driver_name, phone: row.phone, email: row.email,
+      currentLat: row.current_lat, currentLng: row.current_lng, status: row.status,
+      ownerId: row.owner_id, driverId: row.driver_id
+    });
     return;
   }
 
   // ----------- Bookings -----------
-  if (req.method === "GET" && url.pathname === "/api/bookings") {
-    const auth = requireAuth(req, res, sendJson);
-    if (!auth) return;
-    const permissions = ROLE_PERMISSIONS[auth.user.roleSlug] || [];
-    if (!permissions.includes("bookings.read")) {
-      sendJson(req, res, 403, { error: "You don't have permission to view bookings.", code: "FORBIDDEN" });
-      return;
-    }
-    sendJson(req, res, 200, bookingsVisibleTo(auth.user, db.bookings));
+if (req.method === "GET" && url.pathname === "/api/bookings") {
+  const auth = requireAuth(req, res, sendJson);
+  if (!auth) return;
+
+  const permissions = ROLE_PERMISSIONS[auth.user.roleSlug] || [];
+  if (!permissions.includes("bookings.read")) {
+    sendJson(req, res, 403, {
+      error: "You don't have permission to view bookings.",
+      code: "FORBIDDEN"
+    });
     return;
   }
+
+  const params = [];
+  const filters = [];
+  const role = auth.user.roleSlug;
+
+  if (!["super_admin", "dispatcher"].includes(role)) {
+    if (role === "hospital_admin" || role === "hospital_doctor" ||
+        role === "hospital_reception" || role === "hospital_staff") {
+      const profile = getProfile(auth.user);
+      if (!profile?.hospitalId) {
+        sendJson(req, res, 200, []);
+        return;
+      }
+
+      params.push(profile.hospitalId);
+      filters.push(`b.hospital_id = $${params.length}`);
+    } else if (role === "fleet_owner") {
+      params.push(auth.user.id);
+      filters.push(`a.owner_id = $${params.length}`);
+    } else if (role === "driver") {
+      params.push(auth.user.id);
+      filters.push(`(
+        b.assigned_driver_id = $${params.length}
+        OR a.driver_id = $${params.length}
+      )`);
+    } else {
+      sendJson(req, res, 200, []);
+      return;
+    }
+  }
+
+  try {
+    const result = await pool.query(
+      `
+        SELECT b.*
+        FROM bookings b
+        LEFT JOIN ambulances a ON a.id = b.ambulance_id
+        ${filters.length ? `WHERE ${filters.join(" AND ")}` : ""}
+        ORDER BY b.created_at DESC
+      `,
+      params
+    );
+
+    sendJson(req, res, 200, result.rows.map(bookingRowToApi));
+  } catch (error) {
+    console.error("Failed to load bookings:", error.message);
+    sendJson(req, res, 500, {
+      error: "Unable to load bookings"
+    });
+  }
+
+  return;
+}
   if (req.method === "GET" && url.pathname === "/api/bookings/lookup") {
     const id = Number(url.searchParams.get("id"));
-    const phone = url.searchParams.get("phone") || "";
-    const booking = db.bookings.find(b => b.id === id && lastDigits(b.phone) === lastDigits(phone) && lastDigits(phone).length > 0);
-    if (!booking) { sendJson(req, res, 404, { error: "No booking found for that ID and phone number." }); return; }
-    const amb = booking.ambulanceId ? db.ambulances.find(a => a.id === booking.ambulanceId) : null;
-    sendJson(req, res, 200, {
-      id: booking.id, status: booking.status, destination: booking.destination,
-      pickup: booking.pickup,
-      pickupLat: booking.pickupLat,
-      pickupLng: booking.pickupLng,
-      destinationLat: booking.destinationLat,
-      destinationLng: booking.destinationLng,
-      dispatchDistanceKm: booking.dispatchDistanceKm,
-      ambulance: amb ? {
-        registrationNumber: amb.registrationNumber,
-        driverName: amb.driverName,
-        type: amb.type,
-        currentLat: amb.currentLat,
-        currentLng: amb.currentLng
-      } : null,
-      driver: bookingPublicDriver(booking)
-    });
+    const phone = lastDigits(url.searchParams.get("phone"));
+
+    if (!Number.isInteger(id) || id < 1 || phone.length < 4) {
+      sendJson(req, res, 400, { error: "A valid booking ID and phone number are required." });
+      return;
+    }
+
+    try {
+      const result = await pool.query(
+        `
+          SELECT
+            b.*,
+            a.registration_number AS ambulance_registration_number,
+            a.type AS ambulance_type,
+            a.driver_name AS ambulance_driver_name,
+            a.current_lat AS ambulance_current_lat,
+            a.current_lng AS ambulance_current_lng
+          FROM bookings b
+          LEFT JOIN ambulances a ON a.id = b.ambulance_id
+          WHERE b.id = $1
+            AND regexp_replace(b.phone, '[^0-9]', '', 'g') LIKE '%' || $2
+          LIMIT 1
+        `,
+        [id, phone]
+      );
+
+      const row = result.rows[0];
+      if (!row) {
+        sendJson(req, res, 404, { error: "Booking not found" });
+        return;
+      }
+
+      const booking = bookingRowToApi(row);
+      booking.ambulance = row.ambulance_id === null ? null : {
+        registrationNumber: row.ambulance_registration_number,
+        type: row.ambulance_type,
+        driverName: row.ambulance_driver_name,
+        currentLat: row.ambulance_current_lat === null ? null : Number(row.ambulance_current_lat),
+        currentLng: row.ambulance_current_lng === null ? null : Number(row.ambulance_current_lng)
+      };
+
+      sendJson(req, res, 200, booking);
+    } catch (error) {
+      console.error("Failed to look up booking:", error.message);
+      sendJson(req, res, 500, { error: "Unable to look up booking" });
+    }
+
     return;
   }
   if (req.method === "POST" && url.pathname === "/api/bookings") {
@@ -782,7 +1082,7 @@ async function handleApi(req, res) {
     if (isHoneypotTriggered(body)) { sendJson(req, res, 400, { error: "Unable to process request." }); return; }
     const auth = authenticate(req);
     const customerId = auth && auth.user.roleSlug === "customer" ? auth.user.id : null;
-    const result = createBooking(body, customerId);
+    const result = await createBooking(body, customerId);
     if (result.error) { sendJson(req, res, result.statusCode, { error: result.error, fields: result.fields }); return; }
     sendJson(req, res, 201, result.booking);
     return;
@@ -794,17 +1094,32 @@ async function handleApi(req, res) {
       return;
     }
     const phoneKey = lastDigits(auth.user.phone);
-    const mine = db.bookings.filter(b => b.customerId === auth.user.id || (phoneKey && lastDigits(b.phone) === phoneKey));
-    sendJson(req, res, 200, mine.slice().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
+
+try {
+  const result = await pool.query(
+    `
+      SELECT *
+      FROM bookings
+      WHERE customer_id = $1
+         OR regexp_replace(phone, '[^0-9]', '', 'g') LIKE '%' || $2
+      ORDER BY created_at DESC
+    `,
+    [auth.user.id, phoneKey]
+  );
+
+  sendJson(req, res, 200, result.rows.map(bookingRowToApi));
+} catch (error) {
+  console.error("Failed to load my bookings:", error.message);
+  sendJson(req, res, 500, {
+    error: "Unable to load your bookings"
+  });
+}
     return;
   }
   const bookingMatch = url.pathname.match(/^\/api\/bookings\/(\d+)$/);
   if (req.method === "PATCH" && bookingMatch) {
     const auth = requireAuth(req, res, sendJson);
     if (!auth) return;
-
-    const booking = db.bookings.find(b => b.id === Number(bookingMatch[1]));
-    if (!booking) { sendJson(req, res, 404, { error: "Booking not found" }); return; }
 
     const body = await parseBody(req);
     const nextStatus = body.status;
@@ -820,91 +1135,141 @@ async function handleApi(req, res) {
       return;
     }
 
-    const perms = ROLE_PERMISSIONS[auth.user.roleSlug] || [];
-    const isStaffManager = perms.includes("bookings.update");
-    const canDispatch = perms.includes("bookings.dispatch");
-    const isOwnerCancelling = auth.user.roleSlug === "customer" && booking.customerId === auth.user.id && nextStatus === "cancelled";
-    const isAssignedDriver = auth.user.roleSlug === "driver" && booking.assignedDriverId === auth.user.id;
-    const canUpdateStatus = auth.user.roleSlug === "driver" ? isAssignedDriver : isStaffManager;
-
-    if (hasDispatchUpdate && !canDispatch) {
-      sendJson(req, res, 403, { error: "You don't have permission to assign ambulances or drivers.", code: "FORBIDDEN" });
-      return;
-    }
-    if (hasStatusUpdate && !canUpdateStatus && !isOwnerCancelling) {
-      sendJson(req, res, 403, { error: "You don't have permission to update this booking.", code: "FORBIDDEN" });
-      return;
-    }
-
-    const previousDriverId = booking.assignedDriverId || null;
-
-    if (hasDispatchUpdate) {
-      let nextAmbulance = booking.ambulanceId ? db.ambulances.find(a => a.id === booking.ambulanceId) : null;
-      if (body.ambulanceId !== undefined) {
-        if (body.ambulanceId === null || body.ambulanceId === "") {
-          nextAmbulance = null;
-        } else {
-          nextAmbulance = db.ambulances.find(a => a.id === Number(body.ambulanceId));
-          if (!nextAmbulance) { sendJson(req, res, 400, { error: "ambulanceId does not match a known ambulance" }); return; }
-        }
-      }
-
-      let nextDriverId = booking.assignedDriverId || null;
-      if (body.assignedDriverId !== undefined) {
-        if (body.assignedDriverId === null || body.assignedDriverId === "") {
-          nextDriverId = null;
-        } else {
-          const driver = driverOption(Number(body.assignedDriverId));
-          if (!driver) { sendJson(req, res, 400, { error: "assignedDriverId must match a real driver account" }); return; }
-          nextDriverId = driver.id;
-        }
-      } else if (nextAmbulance && nextAmbulance.driverId) {
-        nextDriverId = nextAmbulance.driverId;
-      }
-
-      if (nextAmbulance && nextDriverId && nextAmbulance.driverId && nextAmbulance.driverId !== nextDriverId) {
-        sendJson(req, res, 400, { error: "Selected driver is not linked to the selected ambulance." });
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const currentResult = await client.query(
+        "SELECT * FROM bookings WHERE id = $1 FOR UPDATE",
+        [Number(bookingMatch[1])]
+      );
+      const currentRow = currentResult.rows[0];
+      if (!currentRow) {
+        await client.query("ROLLBACK");
+        sendJson(req, res, 404, { error: "Booking not found" });
         return;
       }
 
-      if (booking.ambulanceId && booking.ambulanceId !== nextAmbulance?.id) {
-        const previousAmbulance = db.ambulances.find(a => a.id === booking.ambulanceId);
-        if (previousAmbulance && previousAmbulance.status === "busy") previousAmbulance.status = "available";
-      }
-      if (nextAmbulance && isActiveBookingStatus(booking.status)) {
-        nextAmbulance.status = "busy";
-      }
+      const currentBooking = bookingRowToApi(currentRow);
+      const perms = ROLE_PERMISSIONS[auth.user.roleSlug] || [];
+      const isStaffManager = perms.includes("bookings.update");
+      const canDispatch = perms.includes("bookings.dispatch");
+      const isOwnerCancelling = auth.user.roleSlug === "customer" && currentBooking.customerId === auth.user.id && nextStatus === "cancelled";
+      const isAssignedDriver = auth.user.roleSlug === "driver" && currentBooking.assignedDriverId === auth.user.id;
+      const canUpdateStatus = auth.user.roleSlug === "driver" ? isAssignedDriver : isStaffManager;
 
-      booking.ambulanceId = nextAmbulance ? nextAmbulance.id : null;
-      booking.assignedDriverId = nextDriverId;
-      if (booking.status === "requested" && (booking.ambulanceId || booking.assignedDriverId)) {
-        booking.status = "assigned";
-      }
-    }
-
-    if (hasStatusUpdate) {
-      if (!BOOKING_TRANSITIONS[booking.status].includes(nextStatus)) {
-        sendJson(req, res, 409, { error: `Cannot move a booking from "${booking.status}" to "${nextStatus}".`, allowedNext: BOOKING_TRANSITIONS[booking.status] });
+      if (hasDispatchUpdate && !canDispatch) {
+        await client.query("ROLLBACK");
+        sendJson(req, res, 403, { error: "You don't have permission to assign ambulances or drivers.", code: "FORBIDDEN" });
         return;
       }
-      booking.status = nextStatus;
-    }
+      if (hasStatusUpdate && !canUpdateStatus && !isOwnerCancelling) {
+        await client.query("ROLLBACK");
+        sendJson(req, res, 403, { error: "You don't have permission to update this booking.", code: "FORBIDDEN" });
+        return;
+      }
 
-    booking.updatedAt = new Date().toISOString();
-    if ((booking.status === "completed" || booking.status === "cancelled") && booking.ambulanceId) {
-      const ambulance = db.ambulances.find(a => a.id === booking.ambulanceId);
-      if (ambulance && ambulance.status === "busy") ambulance.status = "available";
+      let ambulanceId = currentBooking.ambulanceId;
+      let driverId = currentBooking.assignedDriverId;
+      let nextAmbulance = null;
+
+      if (hasDispatchUpdate) {
+        if (body.ambulanceId !== undefined) {
+          ambulanceId = body.ambulanceId === null || body.ambulanceId === "" ? null : Number(body.ambulanceId);
+        }
+
+        if (ambulanceId !== null) {
+          const ambulanceResult = await client.query(
+            "SELECT id, status, driver_id FROM ambulances WHERE id = $1 FOR UPDATE",
+            [ambulanceId]
+          );
+          nextAmbulance = ambulanceResult.rows[0] || null;
+          if (!nextAmbulance) {
+            await client.query("ROLLBACK");
+            sendJson(req, res, 400, { error: "ambulanceId does not match a known ambulance" });
+            return;
+          }
+          if (nextAmbulance.id !== currentBooking.ambulanceId && nextAmbulance.status !== "available") {
+            await client.query("ROLLBACK");
+            sendJson(req, res, 409, { error: "Selected ambulance is not available." });
+            return;
+          }
+        }
+
+        if (body.assignedDriverId !== undefined) {
+          driverId = body.assignedDriverId === null || body.assignedDriverId === "" ? null : Number(body.assignedDriverId);
+          if (driverId !== null) {
+            const driverResult = await client.query(
+              "SELECT id FROM users WHERE id = $1 AND role = 'driver'",
+              [driverId]
+            );
+            if (!driverResult.rows[0]) {
+              await client.query("ROLLBACK");
+              sendJson(req, res, 400, { error: "assignedDriverId must match a real driver account" });
+              return;
+            }
+          }
+        } else if (nextAmbulance) {
+          driverId = nextAmbulance.driver_id || null;
+        }
+
+        if (nextAmbulance && driverId && nextAmbulance.driver_id && nextAmbulance.driver_id !== driverId) {
+          await client.query("ROLLBACK");
+          sendJson(req, res, 400, { error: "Selected driver is not linked to the selected ambulance." });
+          return;
+        }
+      }
+
+      let status = currentBooking.status;
+      if (hasStatusUpdate) {
+        if (!BOOKING_TRANSITIONS[status].includes(nextStatus)) {
+          await client.query("ROLLBACK");
+          sendJson(req, res, 409, {
+            error: `Cannot move a booking from "${status}" to "${nextStatus}".`,
+            allowedNext: BOOKING_TRANSITIONS[status]
+          });
+          return;
+        }
+        status = nextStatus;
+      } else if (status === "requested" && (ambulanceId || driverId)) {
+        status = "assigned";
+      }
+
+      if (currentBooking.ambulanceId && currentBooking.ambulanceId !== ambulanceId) {
+        await client.query(
+          "UPDATE ambulances SET status = 'available' WHERE id = $1 AND status = 'busy'",
+          [currentBooking.ambulanceId]
+        );
+      }
+      if (ambulanceId && isActiveBookingStatus(status)) {
+        await client.query("UPDATE ambulances SET status = 'busy' WHERE id = $1", [ambulanceId]);
+      }
+      if (ambulanceId && ["completed", "cancelled"].includes(status)) {
+        await client.query("UPDATE ambulances SET status = 'available' WHERE id = $1", [ambulanceId]);
+      }
+
+      const updatedResult = await client.query(
+        `
+          UPDATE bookings
+          SET ambulance_id = $1,
+              assigned_driver_id = $2,
+              status = $3,
+              updated_at = CURRENT_TIMESTAMP
+          WHERE id = $4
+          RETURNING *
+        `,
+        [ambulanceId, driverId, status, currentBooking.id]
+      );
+      await client.query("COMMIT");
+
+      const updatedBooking = bookingRowToApi(updatedResult.rows[0]);
+      sendJson(req, res, 200, updatedBooking);
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => {});
+      console.error("Failed to update booking:", error.message);
+      sendJson(req, res, 500, { error: "Unable to update booking" });
+    } finally {
+      client.release();
     }
-    if (previousDriverId && previousDriverId !== booking.assignedDriverId) {
-      releaseDriverIfFree(previousDriverId, booking.id);
-    }
-    if (booking.assignedDriverId && ["assigned", "on_route"].includes(booking.status)) {
-      markDriverBusy(booking.assignedDriverId);
-    }
-    if (booking.assignedDriverId && ["completed", "cancelled"].includes(booking.status)) {
-      releaseDriverIfFree(booking.assignedDriverId, booking.id);
-    }
-    sendJson(req, res, 200, booking);
     return;
   }
 
@@ -928,12 +1293,19 @@ async function handleApi(req, res) {
     if (result.nextAction === "create_booking" && result.readyBooking) {
       const chatAuth = authenticate(req);
       const chatCustomerId = chatAuth && chatAuth.user.roleSlug === "customer" ? chatAuth.user.id : null;
-      const outcome = createBooking(result.readyBooking, chatCustomerId);
+      const outcome = await createBooking(result.readyBooking, chatCustomerId);
       if (outcome.booking) {
         booking = outcome.booking;
-        const amb = booking.ambulanceId ? db.ambulances.find(a => a.id === booking.ambulanceId) : null;
+        let amb = null;
+        if (booking.ambulanceId) {
+          const ambulanceResult = await pool.query(
+            "SELECT registration_number FROM ambulances WHERE id = $1",
+            [booking.ambulanceId]
+          );
+          amb = ambulanceResult.rows[0] || null;
+        }
         result.reply = `${result.reply} Booking #${booking.id} created (status: ${booking.status}).` +
-          (amb ? ` ${amb.registrationNumber} has been dispatched.` : " No ambulance is free right now — you're first in line for the next one.");
+          (amb ? ` ${amb.registration_number} has been dispatched.` : " No ambulance is free right now — you're first in line for the next one.");
       } else {
         chatSessions.set(sessionId, emptySession());
         result.reply = `I couldn't create that booking (${outcome.error}). Let's start over — what is the patient's name?`;
@@ -944,7 +1316,21 @@ async function handleApi(req, res) {
 
     let hospitals = null;
     if (result.nextAction === "show_hospitals" && result.cityQuery) {
-      hospitals = db.hospitals.filter(h => h.city.toLowerCase().includes(result.cityQuery.toLowerCase()) || h.name.toLowerCase().includes(result.cityQuery.toLowerCase()));
+      const hospitalResult = await pool.query(
+        `
+          SELECT id, name, city, address, phone, email,
+                 emergency_available AS "emergencyAvailable",
+                 total_beds AS "totalBeds", available_beds AS "availableBeds",
+                 status, lat, lng, owner_id AS "ownerId", departments
+          FROM hospitals
+          WHERE status = 'approved'
+            AND (LOWER(city) LIKE '%' || LOWER($1) || '%'
+                 OR LOWER(name) LIKE '%' || LOWER($1) || '%')
+          ORDER BY id
+        `,
+        [result.cityQuery]
+      );
+      hospitals = hospitalResult.rows;
       result.reply = hospitals.length ? `${result.reply} ${hospitals.map(h => h.name).join(", ")}.` : `${result.reply} I don't have any hospitals matching "${result.cityQuery}" in the demo data yet.`;
     }
 

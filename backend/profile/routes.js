@@ -23,14 +23,14 @@ const HOSPITAL_SUB_ROLES = {
   staff: "hospital_staff"
 };
 
-async function handleProfileRoutes(req, res, url, parseBody, sendJson, db) {
+async function handleProfileRoutes(req, res, url, parseBody, sendJson, pool) {
   // ---- Get full profile ----
   if (req.method === "GET" && url.pathname === "/api/profile") {
     const auth = requireAuth(req, res, sendJson);
     if (!auth) return true;
 
     const profile = getProfile(auth.user);
-    const related = getRelatedData(auth.user.id, auth.user.roleSlug, db);
+    const related = await getRelatedData(auth.user.id, auth.user.roleSlug, pool);
 
     sendJson(req, res, 200, {
       user: sanitizeUser(auth.user),
@@ -283,7 +283,7 @@ async function handleProfileRoutes(req, res, url, parseBody, sendJson, db) {
     const data = {
       user: sanitizeUser(auth.user),
       profile: getProfile(auth.user),
-      ...getRelatedData(auth.user.id, auth.user.roleSlug, db),
+      ...(await getRelatedData(auth.user.id, auth.user.roleSlug, pool)),
       exportedAt: new Date().toISOString()
     };
     auditAction(req, auth.user.id, "profile.data_exported", "user", auth.user.id);
@@ -417,7 +417,7 @@ async function handleProfileRoutes(req, res, url, parseBody, sendJson, db) {
   return false;
 }
 
-function getRelatedData(userId, roleSlug, db) {
+async function getRelatedData(userId, roleSlug, pool) {
   const data = {
     emergencyContacts: store.emergencyContacts.filter(c => c.userId === userId),
     addresses: store.addresses.filter(a => a.userId === userId),
@@ -427,38 +427,84 @@ function getRelatedData(userId, roleSlug, db) {
   if (roleSlug === "driver") {
     data.bankDetails = store.driverBankDetails.find(b => b.userId === userId) || null;
     data.documents = store.documents.filter(d => d.userId === userId);
-    if (db) {
-      const myAmbulance = db.ambulances.find(a => a.driverId === userId) || null;
-      data.assignedAmbulance = myAmbulance;
-      data.activeBooking = db.bookings.find(b =>
-        ["assigned", "on_route"].includes(b.status) &&
-        (b.assignedDriverId === userId || (myAmbulance && b.ambulanceId === myAmbulance.id))
-      ) || null;
+    if (pool) {
+      const ambulanceResult = await pool.query(`
+        SELECT id, registration_number AS "registrationNumber", type,
+               driver_name AS "driverName", current_lat AS "currentLat",
+               current_lng AS "currentLng", status, owner_id AS "ownerId",
+               driver_id AS "driverId"
+        FROM ambulances
+        WHERE driver_id = $1
+        LIMIT 1
+      `, [userId]);
+      data.assignedAmbulance = ambulanceResult.rows[0] || null;
+
+      const activeBookingResult = await pool.query(`
+        SELECT b.*, a.registration_number AS ambulance_registration_number,
+               a.type AS ambulance_type, a.driver_name AS ambulance_driver_name,
+               a.current_lat AS ambulance_current_lat, a.current_lng AS ambulance_current_lng
+        FROM bookings b
+        LEFT JOIN ambulances a ON a.id = b.ambulance_id
+        WHERE b.status IN ('assigned', 'on_route')
+          AND (b.assigned_driver_id = $1 OR a.driver_id = $1)
+        ORDER BY b.created_at DESC
+        LIMIT 1
+      `, [userId]);
+      data.activeBooking = activeBookingResult.rows[0]
+        ? bookingWorkspaceFromRow(activeBookingResult.rows[0])
+        : null;
     }
   }
 
-  if (roleSlug === "dispatcher" && db) {
-    const activeStatuses = ["requested", "assigned", "on_route"];
-    const dispatchBookings = db.bookings
-      .filter(b => activeStatuses.includes(b.status))
-      .slice()
-      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  if (roleSlug === "dispatcher" && pool) {
+    const dispatchResult = await pool.query(`
+      SELECT b.*, a.registration_number AS ambulance_registration_number,
+             a.type AS ambulance_type, a.driver_name AS ambulance_driver_name,
+             a.current_lat AS ambulance_current_lat, a.current_lng AS ambulance_current_lng,
+             a.status AS ambulance_status, a.driver_id AS ambulance_driver_id
+      FROM bookings b
+      LEFT JOIN ambulances a ON a.id = b.ambulance_id
+      WHERE b.status IN ('requested', 'assigned', 'on_route')
+      ORDER BY b.created_at DESC
+    `);
+    const ambulanceResult = await pool.query(`
+      SELECT id, registration_number AS "registrationNumber", type,
+             driver_name AS "driverName", current_lat AS "currentLat",
+             current_lng AS "currentLng", status, owner_id AS "ownerId",
+             driver_id AS "driverId"
+      FROM ambulances
+      ORDER BY id
+    `);
+    const completedResult = await pool.query(`
+      SELECT COUNT(*)::int AS total
+      FROM bookings
+      WHERE status = 'completed'
+        AND updated_at::date = CURRENT_DATE
+    `);
     data.dispatcherWorkspace = {
-      bookings: dispatchBookings.map(booking => enrichBookingForWorkspace(booking, db)),
-      ambulances: db.ambulances.map(ambulance => enrichAmbulanceForWorkspace(ambulance)),
-      drivers: store.driverProfiles.map(profile => enrichDriverForWorkspace(profile)),
-      completedToday: db.bookings.filter(b => b.status === "completed" && isToday(b.updatedAt || b.createdAt)).length
+      bookings: dispatchResult.rows.map(bookingWorkspaceFromRow),
+      ambulances: ambulanceResult.rows,
+      drivers: store.driverProfiles.map(enrichDriverForWorkspace),
+      completedToday: completedResult.rows[0]?.total || 0
     };
   }
 
-  if (roleSlug === "fleet_owner" && db) {
-    const myAmbulances = db.ambulances.filter(a => a.ownerId === userId);
-    data.fleet = myAmbulances;
+  if (roleSlug === "fleet_owner" && pool) {
+    const fleetResult = await pool.query(`
+      SELECT id, registration_number AS "registrationNumber", type,
+             driver_name AS "driverName", phone, email,
+             current_lat AS "currentLat", current_lng AS "currentLng",
+             status, owner_id AS "ownerId", driver_id AS "driverId"
+      FROM ambulances
+      WHERE owner_id = $1
+      ORDER BY id
+    `, [userId]);
+    data.fleet = fleetResult.rows;
     data.drivers = store.driverProfiles
       .filter(p => p.fleetOwnerId === userId)
       .map(p => {
         const driverUser = findUserById(p.userId);
-        const assignedAmbulance = myAmbulances.find(a => a.driverId === p.userId) || null;
+        const assignedAmbulance = fleetResult.rows.find(a => a.driverId === p.userId) || null;
         return {
           id: p.userId,
           fullName: p.fullName,
@@ -469,14 +515,27 @@ function getRelatedData(userId, roleSlug, db) {
       });
   }
 
-  if (isHospitalRole(roleSlug) && db) {
+  if (isHospitalRole(roleSlug) && pool) {
     const profile = getProfile({ id: userId, roleSlug });
-    const myHospital = roleSlug === "hospital_admin"
-      ? db.hospitals.find(h => h.ownerId === userId || h.id === profile?.hospitalId) || null
-      : db.hospitals.find(h => h.id === profile?.hospitalId) || null;
+    const hospitalResult = await pool.query(`
+      SELECT id, name, city, address, phone, email,
+             emergency_available AS "emergencyAvailable",
+             total_beds AS "totalBeds", available_beds AS "availableBeds",
+             status, lat, lng, owner_id AS "ownerId", departments
+      FROM hospitals
+      WHERE ($1 = 'hospital_admin' AND owner_id = $2)
+         OR ($1 <> 'hospital_admin' AND id = $3)
+      ORDER BY id
+      LIMIT 1
+    `, [roleSlug, userId, profile?.hospitalId || null]);
+    const myHospital = hospitalResult.rows[0] || null;
     data.hospital = myHospital;
-    if (["hospital_admin", "hospital_doctor", "hospital_reception"].includes(roleSlug)) {
-      data.bookings = myHospital ? db.bookings.filter(b => b.hospitalId === myHospital.id).slice(-20).reverse() : [];
+    if (["hospital_admin", "hospital_doctor", "hospital_reception"].includes(roleSlug) && myHospital) {
+      const hospitalBookings = await pool.query(
+        "SELECT * FROM bookings WHERE hospital_id = $1 ORDER BY created_at DESC LIMIT 20",
+        [myHospital.id]
+      );
+      data.bookings = hospitalBookings.rows.map(bookingRowToApi);
     }
     if (roleSlug === "hospital_admin") {
       data.hospitalTeam = getHospitalTeam(userId, myHospital?.id || profile?.hospitalId);
@@ -496,12 +555,6 @@ function getRelatedData(userId, roleSlug, db) {
   return data;
 }
 
-function isToday(value) {
-  const date = new Date(value);
-  const now = new Date();
-  return date.toDateString() === now.toDateString();
-}
-
 function enrichDriverForWorkspace(profile) {
   if (!profile || !profile.userId) return null;
   const user = findUserById(profile.userId);
@@ -514,35 +567,46 @@ function enrichDriverForWorkspace(profile) {
   };
 }
 
-function enrichAmbulanceForWorkspace(ambulance) {
-  const driver = ambulance.driverId
-    ? enrichDriverForWorkspace(store.driverProfiles.find(p => p.userId === ambulance.driverId))
-    : null;
+function bookingRowToApi(row) {
   return {
-    id: ambulance.id,
-    registrationNumber: ambulance.registrationNumber,
-    type: ambulance.type,
-    status: ambulance.status,
-    currentLat: ambulance.currentLat,
-    currentLng: ambulance.currentLng,
-    driverId: ambulance.driverId || null,
-    driverName: driver?.fullName || ambulance.driverName || "Unassigned"
+    id: Number(row.id),
+    patientName: row.patient_name,
+    phone: row.phone,
+    pickup: row.pickup,
+    destination: row.destination,
+    emergencyType: row.emergency_type,
+    ambulanceId: row.ambulance_id === null ? null : Number(row.ambulance_id),
+    assignedDriverId: row.assigned_driver_id === null ? null : Number(row.assigned_driver_id),
+    hospitalId: row.hospital_id === null ? null : Number(row.hospital_id),
+    customerId: row.customer_id === null ? null : Number(row.customer_id),
+    status: row.status,
+    notes: row.notes || "",
+    pickupLat: row.pickup_lat === null ? null : Number(row.pickup_lat),
+    pickupLng: row.pickup_lng === null ? null : Number(row.pickup_lng),
+    destinationLat: row.destination_lat === null ? null : Number(row.destination_lat),
+    destinationLng: row.destination_lng === null ? null : Number(row.destination_lng),
+    dispatchDistanceKm: row.dispatch_distance_km === null ? null : Number(row.dispatch_distance_km),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
   };
 }
 
-function enrichBookingForWorkspace(booking, db) {
-  const ambulance = booking.ambulanceId ? db.ambulances.find(a => a.id === booking.ambulanceId) : null;
-  const driverProfile = booking.assignedDriverId
-    ? store.driverProfiles.find(p => p.userId === booking.assignedDriverId)
-    : ambulance?.driverId
-      ? store.driverProfiles.find(p => p.userId === ambulance.driverId)
-      : null;
-  const driver = driverProfile ? enrichDriverForWorkspace(driverProfile) : null;
-  return {
-    ...booking,
-    ambulance: ambulance ? enrichAmbulanceForWorkspace(ambulance) : null,
-    driver
+function bookingWorkspaceFromRow(row) {
+  const booking = bookingRowToApi(row);
+  booking.ambulance = row.ambulance_id === null ? null : {
+    id: Number(row.ambulance_id),
+    registrationNumber: row.ambulance_registration_number,
+    type: row.ambulance_type,
+    driverName: row.ambulance_driver_name || "Unassigned",
+    currentLat: row.ambulance_current_lat === null ? null : Number(row.ambulance_current_lat),
+    currentLng: row.ambulance_current_lng === null ? null : Number(row.ambulance_current_lng),
+    status: row.ambulance_status,
+    driverId: row.ambulance_driver_id === null ? null : Number(row.ambulance_driver_id)
   };
+  booking.driver = row.ambulance_driver_name
+    ? { fullName: row.ambulance_driver_name }
+    : null;
+  return booking;
 }
 
 function getEditableFields(roleSlug) {

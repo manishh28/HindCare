@@ -139,6 +139,7 @@ a {
   font: inherit;
   color: inherit;
   cursor: pointer;
+  transition: color 160ms ease;
 }
 
 .topbar-nav a:hover,
@@ -227,6 +228,16 @@ a {
   background: var(--surface-soft);
 }
 
+.mobile-nav-menu a,
+.mobile-nav-menu button {
+  transition: background 160ms ease, color 160ms ease, transform 160ms ease;
+}
+
+.mobile-nav-menu a:active,
+.mobile-nav-menu button:active {
+  transform: scale(0.985);
+}
+
 .mobile-nav-primary {
   background: var(--siren) !important;
   color: #fff !important;
@@ -311,6 +322,7 @@ a {
   text-decoration: none;
   border: 0;
   cursor: pointer;
+  transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease, border-color 160ms ease;
 }
 
 .cta-primary {
@@ -321,6 +333,8 @@ a {
 
 .cta-primary:hover {
   background: var(--siren-dark);
+  transform: translateY(-2px);
+  box-shadow: 0 18px 32px rgba(225, 29, 46, 0.32);
 }
 
 .cta-secondary {
@@ -331,6 +345,21 @@ a {
 
 .cta-secondary:hover {
   border-color: var(--ink);
+  background: var(--surface-soft);
+  transform: translateY(-2px);
+  box-shadow: 0 10px 20px rgba(11, 18, 32, 0.08);
+}
+
+.cta-primary:active,
+.cta-secondary:active {
+  transform: translateY(0) scale(0.98);
+}
+
+.cta-primary:disabled,
+.cta-secondary:disabled {
+  transform: none;
+  box-shadow: none;
+  cursor: not-allowed;
 }
 
 .cta-call {
@@ -570,6 +599,30 @@ a {
   border-radius: 14px;
   padding: 26px;
   box-shadow: var(--shadow);
+}
+
+.my-booking-modal {
+  position: relative;
+}
+
+.saved-booking-content {
+  margin-top: 22px;
+}
+
+.saved-booking-empty {
+  padding: 18px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 10px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.saved-booking-content .tracker-row {
+  background: #f7fafb;
+}
+
+.saved-booking-content .tracking-map-wrap {
+  margin-top: 0;
 }
 
 .field-row {
@@ -1157,6 +1210,7 @@ select:focus {
 }
 
 .fab {
+  position: relative;
   width: 58px;
   height: 58px;
   border-radius: 50%;
@@ -1180,6 +1234,30 @@ select:focus {
   box-shadow: 0 18px 34px rgba(11, 18, 32, 0.3);
 }
 
+.fab::after {
+  content: attr(aria-label);
+  position: absolute;
+  right: calc(100% + 10px);
+  top: 50%;
+  transform: translateY(-50%) translateX(4px);
+  padding: 7px 10px;
+  border-radius: 7px;
+  background: var(--ink);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.fab:hover::after,
+.fab:focus-visible::after {
+  opacity: 1;
+  transform: translateY(-50%) translateX(0);
+}
+
 .fab:active {
   transform: translateY(-1px) scale(0.96);
 }
@@ -1190,6 +1268,19 @@ select:focus {
 
 .fab-partner {
   background: var(--siren);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .topbar-nav a,
+  .topbar-nav button,
+  .mobile-nav-menu a,
+  .mobile-nav-menu button,
+  .cta-primary,
+  .cta-secondary,
+  .fab,
+  .fab::after {
+    transition: none;
+  }
 }
 
 /* ---- overlay panels (assistant + partner sign-up) ---- */
@@ -1461,6 +1552,60 @@ select:focus {
   max-width: 560px;
 }
 
+/* Feature links behave like dedicated screens. The existing backdrop is
+   retained only as the mounting point so each screen can open and close
+   without duplicating the page shell. */
+body.feature-view-open {
+  overflow: hidden;
+}
+
+body.feature-view-open .overlay-backdrop {
+  align-items: stretch;
+  justify-content: stretch;
+  padding: 0;
+  background: var(--surface);
+}
+
+body.feature-view-open .overlay-backdrop > .modal-panel {
+  width: 100%;
+  max-width: none;
+  max-height: none;
+  min-height: 100vh;
+  overflow-y: auto;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 88px clamp(20px, 7vw, 112px) 56px;
+}
+
+body.feature-view-open .overlay-backdrop > .modal-panel > :not(.panel-close) {
+  width: min(100%, 860px);
+  margin-left: auto;
+  margin-right: auto;
+}
+
+body.feature-view-open .overlay-backdrop > .modal-panel > .panel-close {
+  position: fixed;
+  top: 22px;
+  right: clamp(20px, 4vw, 56px);
+  z-index: 2;
+}
+
+body.feature-view-open .chat-panel {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  max-height: none;
+  border-radius: 0;
+  box-shadow: none;
+  z-index: 70;
+}
+
+body.feature-view-open .chat-panel-body {
+  width: min(100%, 860px);
+  margin: 0 auto;
+  flex: 1;
+}
+
 .legal-list {
   margin: 20px 0 0;
   padding: 0;
@@ -1657,81 +1802,6 @@ select:focus {
   color: var(--muted);
 }
 
-/* ---- live dispatch tracker (inside the dark scene card) ---- */
-.tracker-form {
-  display: grid;
-  grid-template-columns: 1fr 1fr auto;
-  gap: 8px;
-  margin: 14px 0;
-}
-
-.tracker-form input {
-  min-height: 38px;
-  padding: 0 10px;
-  border-radius: 8px;
-  border: 1px solid var(--console-line);
-  background: rgba(255, 255, 255, 0.06);
-  color: var(--console-ink);
-  font: inherit;
-  font-size: 13px;
-}
-
-.tracker-form input::placeholder {
-  color: var(--console-muted);
-}
-
-.tracker-form button {
-  min-height: 38px;
-  padding: 0 14px;
-  border-radius: 8px;
-  border: 0;
-  background: var(--siren);
-  color: #fff;
-  font-weight: 600;
-  font-size: 13px;
-  cursor: pointer;
-}
-
-.tracker-result {
-  margin-top: 4px;
-  padding: 12px;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid var(--console-line);
-  font-size: 13px;
-  color: var(--console-ink);
-  display: grid;
-  gap: 4px;
-}
-
-.tracker-result:empty {
-  display: none;
-}
-
-.tracker-result .tracker-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.tracker-result .tracker-row span:first-child {
-  color: var(--console-muted);
-}
-
-.track-confirmed-booking {
-  justify-self: start;
-  padding: 8px 10px;
-  border: 1px solid rgba(255, 255, 255, 0.28);
-  border-radius: 7px;
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--console-ink);
-  font: inherit;
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.track-confirmed-booking:hover { background: rgba(255, 255, 255, 0.16); }
-
 .tracking-map-wrap {
   display: grid;
   gap: 8px;
@@ -1872,10 +1942,6 @@ select:focus {
 
   .tips-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .tracker-form {
-    grid-template-columns: 1fr;
   }
 
   .field-row {
