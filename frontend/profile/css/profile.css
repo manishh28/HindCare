@@ -417,6 +417,40 @@
   border-top: 1px solid var(--md-sys-color-outline-variant);
 }
 
+/* The dispatcher needs usable controls before the phone breakpoint. A
+   hidden sidebar gives the board the full viewport instead of squeezing
+   the request card beside the ambulance list. */
+@media (max-width: 1180px) {
+  .profile-layout { grid-template-columns: 1fr; }
+
+  .profile-sidebar {
+    position: fixed;
+    left: -100%;
+    z-index: 100;
+    width: min(var(--sidebar-width), 86vw);
+    transition: left var(--md-sys-motion-duration-medium);
+  }
+
+  .profile-sidebar.open { left: 0; }
+  .sidebar-overlay.open { display: block; }
+  .mobile-nav-toggle { display: block; }
+  .profile-content { padding: 1.25rem; }
+  .profile-header { padding: 0 1.25rem; }
+
+  .dispatch-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dispatch-route,
+  .dispatch-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .dispatch-controls .md-btn {
+    width: 100%;
+  }
+}
+
 /* Mobile sidebar toggle */
 .mobile-nav-toggle {
   display: none;
@@ -474,4 +508,82 @@
   color: var(--md-sys-color-on-surface-variant);
 }
 
+/* Super admin control center */
+.admin-table-wrap {
+  overflow-x: auto;
+}
+
+.admin-table {
+  width: 100%;
+  min-width: 720px;
+  border-collapse: collapse;
+}
+
+.admin-table th,
+.admin-table td {
+  padding: 0.9rem 0.75rem;
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.admin-table th {
+  color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-label-medium);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.admin-table td small {
+  display: block;
+  margin-top: 0.25rem;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.admin-table .md-input {
+  min-width: 150px;
+}
+
+.admin-record-list {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.admin-record {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-medium);
+}
+
+.admin-record-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.admin-record-actions .md-input {
+  min-width: 145px;
+}
+
+@media (max-width: 700px) {
+  .admin-record {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .admin-record-actions {
+    justify-content: flex-start;
+  }
+}
+
 .hidden { display: none !important; }
+
+@media (max-width: 1180px) {
+  .mobile-nav-toggle { display: block; }
+}

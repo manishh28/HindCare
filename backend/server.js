@@ -132,8 +132,8 @@ const chatSessions = new Map();
 const SECURITY_HEADERS = {
   "Content-Security-Policy": [
     "default-src 'self'",
-    "script-src 'self'",
-    "style-src 'self' https://fonts.googleapis.com",
+    "script-src 'self' https://unpkg.com",
+    "style-src 'self' https://fonts.googleapis.com https://unpkg.com",
     "font-src 'self' https://fonts.gstatic.com",
     "img-src 'self' data:",
     "connect-src 'self'",
@@ -1199,7 +1199,10 @@ try {
           driverId = body.assignedDriverId === null || body.assignedDriverId === "" ? null : Number(body.assignedDriverId);
           if (driverId !== null) {
             const driverResult = await client.query(
-              "SELECT id FROM users WHERE id = $1 AND role = 'driver'",
+              `SELECT u.id
+               FROM users u
+               JOIN roles r ON r.id = u.role_id
+               WHERE u.id = $1 AND r.slug = 'driver'`,
               [driverId]
             );
             if (!driverResult.rows[0]) {

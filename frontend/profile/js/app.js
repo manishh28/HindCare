@@ -50,6 +50,10 @@ const ROLE_NAV = {
   hospital_reception: [{ id: "hospital", label: "My Hospital", icon: "hospital" }],
   hospital_staff: [{ id: "hospital", label: "My Hospital", icon: "hospital" }],
   super_admin: [
+    { id: "admin-users", label: "Users & Roles", icon: "users" },
+    { id: "admin-hospitals", label: "Hospitals", icon: "hospital" },
+    { id: "admin-fleet", label: "Ambulance Fleet", icon: "truck" },
+    { id: "admin-bookings", label: "All Bookings", icon: "activity" },
     { id: "activity", label: "Activity Log", icon: "activity" },
     { id: "system", label: "System", icon: "system" }
   ],
@@ -72,7 +76,11 @@ const PAGE_TITLES = {
   hospital: "My Hospital",
   "hospital-team": "Hospital Team",
   fleet: "My Fleet",
-  "fleet-drivers": "My Drivers"
+  "fleet-drivers": "My Drivers",
+  "admin-users": "Users & Roles",
+  "admin-hospitals": "Hospitals",
+  "admin-fleet": "Ambulance Fleet",
+  "admin-bookings": "All Bookings"
 };
 
 // ---------------------------------------------------------------------
@@ -184,7 +192,11 @@ const RENDERERS = {
   hospital: renderHospital,
   "hospital-team": renderHospitalTeam,
   fleet: renderFleet,
-  "fleet-drivers": renderFleetDrivers
+  "fleet-drivers": renderFleetDrivers,
+  "admin-users": renderAdminUsers,
+  "admin-hospitals": renderAdminHospitals,
+  "admin-fleet": renderAdminFleet,
+  "admin-bookings": renderAdminBookings
 };
 
 async function renderRoute() {
@@ -919,6 +931,134 @@ function dispatchBookingCard(booking, ambulances, drivers) {
 async function refreshProfileData() {
   data = await profileApi("/api/profile");
   renderRoute();
+}
+
+// ---------------------------------------------------------------------
+// Super admin control center
+// ---------------------------------------------------------------------
+function adminStatus(status) {
+  const tone = { active: "available", approved: "available", available: "available", completed: "available", pending: "on_break", requested: "on_break", suspended: "busy", locked: "busy", rejected: "busy", busy: "busy", on_route: "on_break", cancelled: "busy" }[status] || "offline";
+  return `<span class="status-chip active ${tone}">${escapeHtml(prettyStatus(status))}</span>`;
+}
+
+async function renderAdminUsers(el) {
+  const result = await profileApi("/api/admin/users");
+  const roles = result.roles || [];
+  el.innerHTML = `
+    <div class="profile-card full-width">
+      <div class="profile-card-header"><h2>Users and roles</h2><button type="button" class="md-btn md-btn-outlined" id="admin-users-refresh">Refresh</button></div>
+      <div class="profile-card-body">
+        <p class="info-label" style="margin-bottom:1rem;">Activate, suspend, lock, or change access for every staff and patient account. Your own super admin account is protected.</p>
+        <div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>User</th><th>Role</th><th>Status</th><th>Manage</th></tr></thead><tbody>
+          ${result.users.length ? result.users.map(user => `
+            <tr>
+              <td><strong>${escapeHtml(user.fullName)}</strong><small>${escapeHtml(user.email || user.phone || "—")} · ${escapeHtml(user.employeeId || `#${user.id}`)}</small></td>
+              <td><select class="md-input admin-role-select" data-user-role="${user.id}" ${user.role === "super_admin" ? "disabled" : ""}>${roles.map(role => `<option value="${role.slug}" ${role.slug === user.role ? "selected" : ""}>${escapeHtml(role.name)}</option>`).join("")}</select></td>
+              <td>${adminStatus(user.status)}</td>
+              <td><select class="md-input admin-status-select" data-user-status="${user.id}" ${user.role === "super_admin" ? "disabled" : ""}><option value="active" ${user.status === "active" ? "selected" : ""}>Active</option><option value="suspended" ${user.status === "suspended" ? "selected" : ""}>Suspended</option><option value="locked" ${user.status === "locked" ? "selected" : ""}>Locked</option></select></td>
+            </tr>`).join("") : `<tr><td colspan="4"><div class="empty-state-card">No users found.</div></td></tr>`}
+        </tbody></table></div>
+      </div>
+    </div>`;
+
+  document.getElementById("admin-users-refresh")?.addEventListener("click", refreshProfileData);
+  el.querySelectorAll("[data-user-role], [data-user-status]").forEach(select => {
+    select.addEventListener("change", async () => {
+      const userId = select.dataset.userRole || select.dataset.userStatus;
+      const roleSelect = el.querySelector(`[data-user-role="${userId}"]`);
+      const statusSelect = el.querySelector(`[data-user-status="${userId}"]`);
+      try {
+        await profileApi(`/api/admin/users/${userId}`, { method: "PATCH", body: JSON.stringify({ role: roleSelect.value, status: statusSelect.value }) });
+        toast("User access updated", "success");
+        await refreshProfileData();
+      } catch (err) {
+        toast(err.message, "error");
+        renderRoute();
+      }
+    });
+  });
+}
+
+async function renderAdminHospitals(el) {
+  const hospitals = await profileApi("/api/hospitals");
+  el.innerHTML = `
+    <div class="profile-card full-width">
+      <div class="profile-card-header"><h2>Hospital approvals and operations</h2><button type="button" class="md-btn md-btn-outlined" id="admin-hospitals-refresh">Refresh</button></div>
+      <div class="profile-card-body admin-record-list">
+        ${hospitals.length ? hospitals.map(hospital => `
+          <article class="admin-record">
+            <div><strong>${escapeHtml(hospital.name)}</strong><div class="info-label">${escapeHtml(hospital.city)} · ${escapeHtml(hospital.phone || "No phone")} · ${hospital.availableBeds}/${hospital.totalBeds} beds available</div></div>
+            <div class="admin-record-actions">${adminStatus(hospital.status)}<select class="md-input" data-hospital-status="${hospital.id}"><option value="pending" ${hospital.status === "pending" ? "selected" : ""}>Pending</option><option value="approved" ${hospital.status === "approved" ? "selected" : ""}>Approved</option><option value="rejected" ${hospital.status === "rejected" ? "selected" : ""}>Rejected</option></select></div>
+          </article>`).join("") : '<div class="empty-state-card">No hospitals registered.</div>'}
+      </div>
+    </div>`;
+
+  document.getElementById("admin-hospitals-refresh")?.addEventListener("click", refreshProfileData);
+  el.querySelectorAll("[data-hospital-status]").forEach(select => {
+    select.addEventListener("change", async () => {
+      try {
+        await profileApi(`/api/hospitals/${select.dataset.hospitalStatus}`, { method: "PATCH", body: JSON.stringify({ status: select.value }) });
+        toast("Hospital status updated", "success");
+        renderRoute();
+      } catch (err) { toast(err.message, "error"); }
+    });
+  });
+}
+
+async function renderAdminFleet(el) {
+  const [ambulances, usersResult] = await Promise.all([profileApi("/api/ambulances"), profileApi("/api/admin/users")]);
+  const drivers = (usersResult.users || []).filter(user => user.role === "driver" && user.status === "active");
+  el.innerHTML = `
+    <div class="profile-card full-width">
+      <div class="profile-card-header"><h2>Ambulance fleet control</h2><button type="button" class="md-btn md-btn-outlined" id="admin-fleet-refresh">Refresh</button></div>
+      <div class="profile-card-body admin-record-list">
+        ${ambulances.length ? ambulances.map(ambulance => `
+          <article class="admin-record">
+            <div><strong>${escapeHtml(ambulance.registrationNumber)}</strong><div class="info-label">${escapeHtml(ambulance.type)} · ${escapeHtml(ambulance.driverName || "No driver")}</div></div>
+            <div class="admin-record-actions">${adminStatus(ambulance.status)}<select class="md-input" data-ambulance-status="${ambulance.id}">${["available", "busy", "maintenance", "offline"].map(status => `<option value="${status}" ${ambulance.status === status ? "selected" : ""}>${prettyStatus(status)}</option>`).join("")}</select><select class="md-input" data-ambulance-driver="${ambulance.id}"><option value="">No driver</option>${drivers.map(driver => `<option value="${driver.id}" ${Number(ambulance.driverId) === Number(driver.id) ? "selected" : ""}>${escapeHtml(driver.fullName)}</option>`).join("")}</select></div>
+          </article>`).join("") : '<div class="empty-state-card">No ambulances registered.</div>'}
+      </div>
+    </div>`;
+
+  document.getElementById("admin-fleet-refresh")?.addEventListener("click", refreshProfileData);
+  el.querySelectorAll("[data-ambulance-status], [data-ambulance-driver]").forEach(select => {
+    select.addEventListener("change", async () => {
+      const ambulanceId = select.dataset.ambulanceStatus || select.dataset.ambulanceDriver;
+      const statusSelect = el.querySelector(`[data-ambulance-status="${ambulanceId}"]`);
+      const driverSelect = el.querySelector(`[data-ambulance-driver="${ambulanceId}"]`);
+      try {
+        await profileApi(`/api/ambulances/${ambulanceId}`, { method: "PATCH", body: JSON.stringify({ status: statusSelect.value, driverId: driverSelect.value ? Number(driverSelect.value) : null }) });
+        toast("Ambulance control updated", "success");
+        renderRoute();
+      } catch (err) { toast(err.message, "error"); }
+    });
+  });
+}
+
+async function renderAdminBookings(el) {
+  const bookings = await profileApi("/api/bookings");
+  el.innerHTML = `
+    <div class="profile-card full-width">
+      <div class="profile-card-header"><h2>Booking command center</h2><button type="button" class="md-btn md-btn-outlined" id="admin-bookings-refresh">Refresh</button></div>
+      <div class="profile-card-body admin-record-list">
+        ${bookings.length ? bookings.map(booking => `
+          <article class="admin-record">
+            <div><strong>Booking #${booking.id} · ${escapeHtml(booking.patientName || "Patient")}</strong><div class="info-label">${escapeHtml(booking.pickup)} → ${escapeHtml(booking.destination)} · ${escapeHtml(booking.phone || "No phone")}</div></div>
+            <div class="admin-record-actions">${adminStatus(booking.status)}<select class="md-input" data-booking-status="${booking.id}">${["requested", "assigned", "on_route", "completed", "cancelled"].map(status => `<option value="${status}" ${booking.status === status ? "selected" : ""}>${prettyStatus(status)}</option>`).join("")}</select></div>
+          </article>`).join("") : '<div class="empty-state-card">No bookings found.</div>'}
+      </div>
+    </div>`;
+
+  document.getElementById("admin-bookings-refresh")?.addEventListener("click", refreshProfileData);
+  el.querySelectorAll("[data-booking-status]").forEach(select => {
+    select.addEventListener("change", async () => {
+      try {
+        await profileApi(`/api/bookings/${select.dataset.bookingStatus}`, { method: "PATCH", body: JSON.stringify({ status: select.value }) });
+        toast("Booking status updated", "success");
+        renderRoute();
+      } catch (err) { toast(err.message, "error"); }
+    });
+  });
 }
 
 // ---------------------------------------------------------------------

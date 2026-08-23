@@ -309,6 +309,92 @@ async function handleProfileRoutes(req, res, url, parseBody, sendJson, pool) {
     return true;
   }
 
+  // ---- Super admin control center ----
+  if (req.method === "GET" && url.pathname === "/api/admin/users") {
+    const auth = requireAuth(req, res, sendJson);
+    if (!auth) return true;
+    if (auth.user.roleSlug !== "super_admin") {
+      sendJson(req, res, 403, { error: "Only the super admin can manage users." });
+      return true;
+    }
+
+    const users = store.users
+      .filter(user => user.status !== "deleted")
+      .map(user => {
+        const safe = sanitizeUser(user);
+        return {
+          id: user.id,
+          fullName: getUserDisplayName(user),
+          email: safe.email,
+          phone: safe.phone,
+          employeeId: safe.employeeId,
+          role: safe.roleSlug,
+          roleName: safe.roleName,
+          status: safe.status,
+          lastLoginAt: safe.lastLoginAt,
+          createdAt: safe.createdAt
+        };
+      })
+      .sort((a, b) => a.roleName.localeCompare(b.roleName) || a.fullName.localeCompare(b.fullName));
+    sendJson(req, res, 200, { users, roles: getAdminRoles() });
+    return true;
+  }
+
+  const adminUserMatch = url.pathname.match(/^\/api\/admin\/users\/(\d+)$/);
+  if (req.method === "PATCH" && adminUserMatch) {
+    const auth = requireAuth(req, res, sendJson);
+    if (!auth) return true;
+    if (auth.user.roleSlug !== "super_admin") {
+      sendJson(req, res, 403, { error: "Only the super admin can manage users." });
+      return true;
+    }
+    const userId = Number(adminUserMatch[1]);
+    if (userId === Number(auth.user.id)) {
+      sendJson(req, res, 400, { error: "You cannot change your own super admin account here." });
+      return true;
+    }
+    const user = findUserById(userId);
+    if (!user) {
+      sendJson(req, res, 404, { error: "User not found" });
+      return true;
+    }
+    const body = await parseBody(req);
+    const allowedStatuses = ["active", "suspended", "locked"];
+    if (body.status !== undefined) {
+      if (!allowedStatuses.includes(body.status)) {
+        sendJson(req, res, 400, { error: `status must be one of: ${allowedStatuses.join(", ")}` });
+        return true;
+      }
+      user.status = body.status;
+      user.lockedUntil = body.status === "locked" ? new Date(Date.now() + 30 * 60 * 1000).toISOString() : null;
+    }
+    if (body.role !== undefined) {
+      const role = getRoleBySlug(String(body.role).trim());
+      if (!role || role.slug === "super_admin") {
+        sendJson(req, res, 400, { error: "Choose a valid non-super-admin role." });
+        return true;
+      }
+      user.roleId = role.id;
+      user.roleSlug = role.slug;
+    }
+    user.updatedAt = new Date().toISOString();
+    auditAction(req, auth.user.id, "admin.user_updated", "user", user.id, { status: user.status, role: user.roleSlug });
+    const safe = sanitizeUser(user);
+    sendJson(req, res, 200, {
+      id: user.id,
+      fullName: getUserDisplayName(user),
+      email: safe.email,
+      phone: safe.phone,
+      employeeId: safe.employeeId,
+      role: safe.roleSlug,
+      roleName: safe.roleName,
+      status: safe.status,
+      lastLoginAt: safe.lastLoginAt,
+      createdAt: safe.createdAt
+    });
+    return true;
+  }
+
   // ---- Hospital team (hospital owner only) ----
   if (req.method === "GET" && url.pathname === "/api/profile/hospital-team") {
     const auth = requireAuth(req, res, sendJson);
@@ -668,6 +754,24 @@ function auditLogVisibleToHospital(log, owner) {
     || teamUserIds.has(Number(log.resourceId))
     || (log.resourceType === "hospital" && Number(log.resourceId) === hospitalId)
     || Number(log.metadata?.hospitalId) === hospitalId;
+}
+
+function getAdminRoles() {
+  return [
+    ["customer", "Patient"],
+    ["hospital_admin", "Hospital Admin"],
+    ["hospital_doctor", "Hospital Doctor"],
+    ["hospital_reception", "Hospital Reception"],
+    ["hospital_staff", "Hospital Staff"],
+    ["fleet_owner", "Ambulance Fleet Owner"],
+    ["driver", "Ambulance Driver"],
+    ["dispatcher", "Dispatcher"]
+  ].map(([slug, name]) => ({ slug, name }));
+}
+
+function getUserDisplayName(user) {
+  const profile = getProfile(user);
+  return profile?.fullName || profile?.adminName || user.email || user.phone || `User #${user.id}`;
 }
 
 module.exports = { handleProfileRoutes };
