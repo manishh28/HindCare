@@ -1,3 +1,4 @@
+const crypto = require("crypto");
 const {
   hashPassword,
   verifyPassword,
@@ -10,6 +11,7 @@ const {
   OTP_TTL_SEC,
   RESET_TOKEN_TTL_SEC
 } = require("./crypto");
+const { markAuthStateDirty } = require("./persist");
 
 const ROLES = [
   { id: 1, slug: "driver", name: "Ambulance Driver", mfaRequired: false },
@@ -207,7 +209,10 @@ function attachProfile(user, profile) {
         profilePhotoUrl: null,
         fullName: profile.fullName,
         companyName: profile.companyName || null,
-        fleetCode: `FLT${String(user.id).padStart(4, "0")}`
+        // Random, unguessable fleet code — the old `FLT` + zero-padded user id
+        // was fully predictable from public signup order, letting any driver
+        // signup attach itself to someone else's fleet by guessing codes.
+        fleetCode: generateFleetCode()
       });
       break;
     default:
@@ -222,10 +227,26 @@ function attachProfile(user, profile) {
     systemMaintenance: true,
     updatedAt: new Date().toISOString()
   });
+  markAuthStateDirty();
 }
 
 function getRoleBySlug(slug) {
   return ROLES.find(r => r.slug === slug);
+}
+
+// Unambiguous alphabet (no 0/O/1/I) — codes are read out over the phone.
+const FLEET_CODE_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ";
+function generateFleetCode() {
+  for (let attempt = 0; attempt < 20; attempt++) {
+    let suffix = "";
+    const bytes = crypto.randomBytes(8);
+    for (let i = 0; i < 8; i++) {
+      suffix += FLEET_CODE_ALPHABET[bytes[i] % FLEET_CODE_ALPHABET.length];
+    }
+    const code = `FLT-${suffix}`;
+    if (!store.fleetOwnerProfiles.some(p => p.fleetCode === code)) return code;
+  }
+  throw new Error("Unable to generate a unique fleet code");
 }
 
 function findUserById(id) {
@@ -268,8 +289,7 @@ function isAccountLocked(user) {
 }
 
 function recordLoginAttempt(userId, success, method, meta = {}) {
-  store.loginHistory.push({
-    id: nextLoginId++,
+  store.loginHistory.push({    id: nextLoginId++,
     userId,
     success,
     method,
@@ -279,6 +299,7 @@ function recordLoginAttempt(userId, success, method, meta = {}) {
     createdAt: new Date().toISOString()
   });
   if (store.loginHistory.length > 10000) store.loginHistory.splice(0, store.loginHistory.length - 10000);
+  markAuthStateDirty();
 }
 
 function recordAudit(userId, action, resourceType, resourceId, meta = {}) {
@@ -294,6 +315,7 @@ function recordAudit(userId, action, resourceType, resourceId, meta = {}) {
     createdAt: new Date().toISOString()
   });
   if (store.auditLogs.length > 10000) store.auditLogs.splice(0, store.auditLogs.length - 10000);
+  markAuthStateDirty();
 }
 
 async function registerFailedLogin(user) {
@@ -303,6 +325,7 @@ async function registerFailedLogin(user) {
     user.lockedUntil = new Date(Date.now() + LOCKOUT_DURATION_MS).toISOString();
   }
   user.updatedAt = new Date().toISOString();
+  markAuthStateDirty();
 }
 
 async function resetFailedLogins(user) {
@@ -310,6 +333,7 @@ async function resetFailedLogins(user) {
   user.lockedUntil = null;
   if (user.status === "locked") user.status = "active";
   user.updatedAt = new Date().toISOString();
+  markAuthStateDirty();
 }
 
 function createOtp({ userId, channel, destination, purpose }) {
@@ -330,6 +354,7 @@ function createOtp({ userId, channel, destination, purpose }) {
   };
   store.otps.push(record);
   if (store.otps.length > 5000) store.otps.splice(0, store.otps.length - 5000);
+  markAuthStateDirty();
   return record;
 }
 
@@ -341,8 +366,12 @@ function verifyOtpRecord(destination, purpose, otp) {
   if (!record) return { ok: false, error: "OTP expired or not found" };
   if (record.attempts >= record.maxAttempts) return { ok: false, error: "Too many OTP attempts" };
   record.attempts += 1;
-  if (hashToken(otp) !== record.otpHash) return { ok: false, error: "Invalid OTP" };
+  if (hashToken(otp) !== record.otpHash) {
+    markAuthStateDirty();
+    return { ok: false, error: "Invalid OTP" };
+  }
   record.verifiedAt = new Date().toISOString();
+  markAuthStateDirty();
   return { ok: true, record };
 }
 
@@ -357,6 +386,7 @@ function createResetToken(userId) {
     _plainToken: token
   };
   store.resetTokens.push(record);
+  markAuthStateDirty();
   return record;
 }
 
@@ -373,6 +403,7 @@ function createSession(userId, meta = {}) {
     id: generateSessionId(),
     userId,
     refreshTokenHash: hashToken(refreshToken),
+    previousTokenHashes: [],
     deviceName: meta.deviceName || "Unknown device",
     ipAddress: meta.ip || null,
     userAgent: meta.userAgent || null,
@@ -385,26 +416,58 @@ function createSession(userId, meta = {}) {
   if (store.sessions.length > 5000) {
     store.sessions = store.sessions.filter(s => !s.revokedAt && new Date(s.expiresAt) > new Date()).slice(-5000);
   }
+  markAuthStateDirty();
   return session;
 }
 
+// Refresh-token rotation: the presented token is retired (hash kept for reuse
+// detection) and a fresh one becomes the only valid credential for the session.
+function rotateSessionRefreshToken(session) {
+  const refreshToken = generateSecureToken();
+  session.previousTokenHashes = [
+    ...(session.previousTokenHashes || []),
+    session.refreshTokenHash
+  ].slice(-5);
+  session.refreshTokenHash = hashToken(refreshToken);
+  markAuthStateDirty();
+  return refreshToken;
+}
+
 function findSessionByRefreshToken(refreshToken) {
+  const tokenHash = hashToken(refreshToken);
   return store.sessions.find(
-    s => !s.revokedAt && s.refreshTokenHash === hashToken(refreshToken) && new Date(s.expiresAt) > new Date()
-  );
+    s => !s.revokedAt && s.refreshTokenHash === tokenHash && new Date(s.expiresAt) > new Date()
+  ) || null;
+}
+
+// A rotated-out token being presented again means the token was stolen at
+// some point — the caller must treat every session of that user as compromised.
+function findSessionByRotatedToken(refreshToken) {
+  const tokenHash = hashToken(refreshToken);
+  return store.sessions.find(
+    s =>
+      Array.isArray(s.previousTokenHashes) &&
+      s.previousTokenHashes.includes(tokenHash)
+  ) || null;
 }
 
 function revokeSession(sessionId) {
   const session = store.sessions.find(s => s.id === sessionId);
-  if (session) session.revokedAt = new Date().toISOString();
+  if (session && !session.revokedAt) {
+    session.revokedAt = new Date().toISOString();
+    markAuthStateDirty();
+  }
 }
 
 function revokeAllSessions(userId, exceptSessionId) {
+  let changed = false;
   store.sessions.forEach(s => {
     if (s.userId === userId && s.id !== exceptSessionId && !s.revokedAt) {
       s.revokedAt = new Date().toISOString();
+      changed = true;
     }
   });
+  if (changed) markAuthStateDirty();
 }
 
 function getProfile(user) {
@@ -451,13 +514,68 @@ function sanitizeUser(user) {
 }
 
 let seeded = Promise.resolve();
-if (process.env.NODE_ENV === "production") {
+
+// Demo accounts are OFF by default. The old behaviour — seeding a full staff
+// roster, including a super admin, whenever NODE_ENV wasn't "production" —
+// meant one forgotten env var on a deployed box gave the world super-admin
+// access with a publicly documented password. Now demo data only exists when
+// someone explicitly opts in with ENABLE_DEMO_ACCOUNTS=true on a non-production
+// run, and never when users were restored from PostgreSQL (a restart must not
+// duplicate or resurrect demo rows).
+// Used by persist.js so id counters survive restarts (ids must never go
+// backwards after hydration, hence the Math.max guards).
+function snapshotAuthCounters() {
+  return {
+    nextUserId,
+    nextOtpId,
+    nextAuditId,
+    nextLoginId,
+    nextAddressId,
+    nextEmergencyId,
+    nextDocumentId
+  };
+}
+
+function restoreAuthCounter(key, value) {
+  const v = Number(value || 0);
+  if (!Number.isFinite(v) || v <= 0) return;
+  switch (key) {
+    case "nextUserId": nextUserId = Math.max(nextUserId, v); break;
+    case "nextOtpId": nextOtpId = Math.max(nextOtpId, v); break;
+    case "nextAuditId": nextAuditId = Math.max(nextAuditId, v); break;
+    case "nextLoginId": nextLoginId = Math.max(nextLoginId, v); break;
+    case "nextAddressId": nextAddressId = Math.max(nextAddressId, v); break;
+    case "nextEmergencyId": nextEmergencyId = Math.max(nextEmergencyId, v); break;
+    case "nextDocumentId": nextDocumentId = Math.max(nextDocumentId, v); break;
+    default: break;
+  }
+}
+
+function maybeSeedDemoUsers() {
+  const wantsDemo = String(process.env.ENABLE_DEMO_ACCOUNTS || "").toLowerCase() === "true";
+  if (!wantsDemo) {
+    if (process.env.NODE_ENV !== "production") {
+      console.log("[HindCare] Demo accounts disabled (set ENABLE_DEMO_ACCOUNTS=true to enable).");
+    }
+    seeded = Promise.resolve();
+    return seeded;
+  }
+  if (process.env.NODE_ENV === "production") {
+    console.warn("[HindCare] ENABLE_DEMO_ACCOUNTS is ignored while NODE_ENV=production.");
+    seeded = Promise.resolve();
+    return seeded;
+  }
+  if (store.users.length > 0) {
+    console.log("[HindCare] Existing accounts found in persistent store — skipping demo seed.");
+    seeded = Promise.resolve();
+    return seeded;
+  }
   console.warn(
-    "[HindCare] Skipping demo account seeding — NODE_ENV=production. " +
-    "Provision real staff accounts through your own admin process."
+    "[HindCare] Seeding DEMO accounts with a shared password. Never enable this on an\n" +
+    "           internet-facing deployment. Disable by removing ENABLE_DEMO_ACCOUNTS."
   );
-} else {
-  seeded = seedDemoUsers();
+  seeded = seedDemoUsers().then(() => markAuthStateDirty());
+  return seeded;
 }
 
 module.exports = {
@@ -465,6 +583,7 @@ module.exports = {
   ROLES,
   ROLE_PERMISSIONS,
   seeded,
+  maybeSeedDemoUsers,
   getRoleBySlug,
   findUserById,
   findUserByEmail,
@@ -481,7 +600,9 @@ module.exports = {
   createResetToken,
   verifyResetToken,
   createSession,
+  rotateSessionRefreshToken,
   findSessionByRefreshToken,
+  findSessionByRotatedToken,
   revokeSession,
   revokeAllSessions,
   getProfile,

@@ -440,7 +440,6 @@ async function bindSignInForm(form) {
 
       if (data.requiresMfa) {
         pendingLogin = payload;
-        if (data.demoOtp) sessionStorage.setItem("demo_mfa_otp", data.demoOtp);
         navigate("/mfa");
         return;
       }
@@ -473,7 +472,6 @@ async function bindForgotForm(form) {
         method: "POST",
         body: JSON.stringify(isEmail ? { email: identifier } : { phone: identifier })
       });
-      if (data.demoResetToken) sessionStorage.setItem("reset_token", data.demoResetToken);
       alert.innerHTML = renderAlert("success", data.message);
       setTimeout(() => navigate("/reset-password"), 2000);
     } catch (err) {

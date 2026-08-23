@@ -15,7 +15,9 @@ const {
   createResetToken,
   verifyResetToken,
   createSession,
+  rotateSessionRefreshToken,
   findSessionByRefreshToken,
+  findSessionByRotatedToken,
   revokeSession,
   revokeAllSessions,
   sanitizeUser,
@@ -45,6 +47,23 @@ const { passwordStrength: calcStrength } = require("./crypto");
 const rateLimits = new Map();
 const RATE_LIMIT_WINDOW_MS = 60000;
 const RATE_LIMIT_MAX = 20;
+
+function setAuthCookies(res, accessToken, refreshToken) {
+  const secure = process.env.NODE_ENV === "production" ||
+    String(process.env.TRUST_PROXY || "").toLowerCase() === "true";
+  const suffix = `; HttpOnly; SameSite=Lax; Path=/${secure ? "; Secure" : ""}`;
+  res.setHeader("Set-Cookie", [
+    `hindcare_access=${encodeURIComponent(accessToken)}; Max-Age=900${suffix}`,
+    `hindcare_refresh=${encodeURIComponent(refreshToken)}; Max-Age=604800${suffix}`
+  ]);
+}
+
+function clearAuthCookies(res) {
+  res.setHeader("Set-Cookie", [
+    "hindcare_access=; Max-Age=0; HttpOnly; SameSite=Lax; Path=/",
+    "hindcare_refresh=; Max-Age=0; HttpOnly; SameSite=Lax; Path=/"
+  ]);
+}
 
 function checkRateLimit(key) {
   const now = Date.now();
@@ -205,9 +224,9 @@ async function handleAuthRoutes(req, res, url, parseBody, sendJson) {
     const tokens = issueTokens(user, session.id);
     auditAction(req, user.id, "user.signup", "user", user.id);
 
+    setAuthCookies(res, tokens.accessToken, session._plainRefreshToken);
     sendJson(req, res, 201, {
       ...tokens,
-      refreshToken: session._plainRefreshToken,
       user: sanitizeUser(user),
       profile: sanitizeProfile(getProfile(user), user.roleSlug)
     });
@@ -351,9 +370,9 @@ async function handleAuthRoutes(req, res, url, parseBody, sendJson) {
       fleet_owner: "/profile/#fleet-owner"
     };
 
+    setAuthCookies(res, tokens.accessToken, session._plainRefreshToken);
     sendJson(req, res, 200, {
       ...tokens,
-      refreshToken: session._plainRefreshToken,
       user: sanitizeUser(user),
       profile: sanitizeProfile(profile, user.roleSlug),
       redirectTo: redirectMap[user.roleSlug] || "/"
@@ -390,6 +409,15 @@ async function handleAuthRoutes(req, res, url, parseBody, sendJson) {
     }
     if (channel === "email" && !validateEmail(destination)) {
       sendJson(req, res, 400, { error: "Invalid email address", code: "INVALID_EMAIL" });
+      return true;
+    }
+
+    // Per-destination cap on top of the per-IP cap — once a real SMS/email
+    // provider is wired up, this is what stops someone from turning the
+    // endpoint into an SMS-pumping (bill bombing) machine against arbitrary
+    // phone numbers.
+    if (!checkRateLimit(`otp-dest:${channel}:${destination}`)) {
+      sendJson(req, res, 429, { error: "Too many codes requested for this destination. Try again later.", code: "RATE_LIMITED" });
       return true;
     }
 
@@ -535,21 +563,51 @@ async function handleAuthRoutes(req, res, url, parseBody, sendJson) {
   }
 
   // ---- Refresh Token ----
+  // Refresh tokens are single-use: every refresh retires the presented token
+  // and issues a new one (rotation). If a token that was already rotated out
+  // shows up again, that's evidence it was copied by an attacker — all of the
+  // user's sessions are revoked immediately.
   if (req.method === "POST" && url.pathname === "/api/auth/refresh") {
+    if (!checkRateLimit(`refresh:${ipKey}`)) {
+      sendJson(req, res, 429, { error: "Too many requests. Please try again later.", code: "RATE_LIMITED" });
+      return true;
+    }
     const body = await parseBody(req);
-    const session = findSessionByRefreshToken(body.refreshToken);
+    const refreshCookie = String(req.headers.cookie || "").split(";")
+      .find(cookie => cookie.trim().startsWith("hindcare_refresh="));
+    let cookieRefreshToken = "";
+    if (refreshCookie) {
+      try {
+        cookieRefreshToken = decodeURIComponent(refreshCookie.trim().slice("hindcare_refresh=".length));
+      } catch {
+        cookieRefreshToken = "";
+      }
+    }
+    const refreshToken = body.refreshToken || cookieRefreshToken;
+    const session = findSessionByRefreshToken(refreshToken);
     if (!session) {
+      const reused = findSessionByRotatedToken(refreshToken);
+      if (reused) {
+        revokeAllSessions(reused.userId);
+        recordAudit(null, "session.replay_detected", "session", reused.id, { userId: reused.userId });
+        console.warn(`[HindCare] Refresh-token replay detected for user ${reused.userId} — all sessions revoked.`);
+      }
+      clearAuthCookies(res);
       sendJson(req, res, 401, { error: "Invalid or expired refresh token", code: "SESSION_EXPIRED" });
       return true;
     }
 
     const user = findUserById(session.userId);
     if (!user || isAccountLocked(user)) {
+      revokeSession(session.id);
+      clearAuthCookies(res);
       sendJson(req, res, 401, { error: "Session invalid", code: "SESSION_EXPIRED" });
       return true;
     }
 
+    const newRefreshToken = rotateSessionRefreshToken(session);
     const tokens = issueTokens(user, session.id);
+    setAuthCookies(res, tokens.accessToken, newRefreshToken);
     sendJson(req, res, 200, tokens);
     return true;
   }
@@ -561,6 +619,7 @@ async function handleAuthRoutes(req, res, url, parseBody, sendJson) {
 
     if (auth.sessionId) revokeSession(auth.sessionId);
     auditAction(req, auth.user.id, "user.logout", "session", auth.sessionId);
+    clearAuthCookies(res);
     sendJson(req, res, 200, { message: "Logged out successfully" });
     return true;
   }

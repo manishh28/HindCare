@@ -52,11 +52,34 @@ function verifyJwt(token) {
   if (parts.length !== 3) throw new Error("Invalid token format");
   const [headerPart, payloadPart, signature] = parts;
   const data = `${headerPart}.${payloadPart}`;
+
+  // Reject unexpected algorithms up front — never let an attacker pick "none"
+  // or an asymmetric alg and hope verification is skipped.
+  let header;
+  try {
+    header = JSON.parse(base64UrlDecode(headerPart).toString("utf8"));
+  } catch {
+    throw new Error("Invalid token header");
+  }
+  if (header.alg !== "HS256") throw new Error("Unsupported token algorithm");
+
   const expected = crypto.createHmac("sha256", JWT_SECRET).update(data).digest("base64url");
-  if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) {
+  const given = Buffer.from(signature);
+  const wanted = Buffer.from(expected);
+  // timingSafeEqual throws on length mismatch — do an explicit length check
+  // first so mismatched-length signatures fail cleanly instead of erroring.
+  if (given.length !== wanted.length || !crypto.timingSafeEqual(given, wanted)) {
     throw new Error("Invalid token signature");
   }
+
   const payload = JSON.parse(base64UrlDecode(payloadPart).toString("utf8"));
+  if (payload.iss !== JWT_ISSUER) throw new Error("Invalid token issuer");
+  if (!payload.sid || typeof payload.sub === "undefined") {
+    // Every token this server issues is bound to a server-side session, so a
+    // token without one can't be ours — reject rather than bypassing the
+    // revocation check in middleware.authenticate().
+    throw new Error("Invalid token claims");
+  }
   if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {
     throw new Error("Token expired");
   }

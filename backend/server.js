@@ -1,5 +1,6 @@
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
 
 // Minimal .env loader (kept dependency-free, matching the rest of this
 // project). Reads KEY=VALUE lines from a .env file in the project root, if
@@ -57,7 +58,16 @@ const { handleMessage, emptySession } = require("../chatbot/chatbot");
 const { handleAuthRoutes } = require("./auth/routes");
 const { handleProfileRoutes } = require("./profile/routes");
 const { authenticate, requireAuth, getRequestMeta } = require("./auth/middleware");
-const { ROLE_PERMISSIONS, findUserById, getProfile, store } = require("./auth/store");
+const {
+  ROLE_PERMISSIONS,
+  findUserById,
+  getProfile,
+  store,
+  maybeSeedDemoUsers,
+  snapshotAuthCounters,
+  restoreAuthCounter
+} = require("./auth/store");
+const { initAuthPersistence } = require("./auth/persist");
 
 // Rate limiting for the public write endpoints below (hospital/ambulance
 // onboarding, booking creation) — mirrors the same pattern already used in
@@ -122,18 +132,45 @@ const db = {
 
 const chatSessions = new Map();
 
+function getCookie(req, name) {
+  const cookies = String(req.headers.cookie || "").split(";");
+  const prefix = `${name}=`;
+  const value = cookies.find(cookie => cookie.trim().startsWith(prefix));
+  if (!value) return null;
+  try {
+    return decodeURIComponent(value.trim().slice(prefix.length));
+  } catch {
+    return null;
+  }
+}
+
+function getChatSessionId(req, res) {
+  const existing = getCookie(req, "hindcare_chat");
+  const sessionId = existing && /^[a-f0-9-]{36}$/i.test(existing)
+    ? existing
+    : crypto.randomUUID();
+  const secure = process.env.NODE_ENV === "production" ||
+    String(process.env.TRUST_PROXY || "").toLowerCase() === "true";
+  res.setHeader(
+    "Set-Cookie",
+    `hindcare_chat=${encodeURIComponent(sessionId)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=1800${secure ? "; Secure" : ""}`
+  );
+  return sessionId;
+}
+
 // ---------------------------------------------------------------------
 // Utility functions
 // ---------------------------------------------------------------------
 
 // Applied to every response. The CSP is deliberately strict — same-origin
-// only, plus the two Google Fonts hosts this app actually loads. No inline
-// scripts/styles are used anywhere, so none are allowed here either.
+// only, plus the Google Fonts hosts this app actually loads. Lenis is
+// self-hosted from /assets/vendor/ so no third-party script host is allowed
+// (a compromised CDN package would otherwise be full XSS against every user).
 const SECURITY_HEADERS = {
   "Content-Security-Policy": [
     "default-src 'self'",
-    "script-src 'self' https://unpkg.com",
-    "style-src 'self' https://fonts.googleapis.com https://unpkg.com",
+    "script-src 'self'",
+    "style-src 'self' https://fonts.googleapis.com",
     "font-src 'self' https://fonts.gstatic.com",
     "img-src 'self' data:",
     "connect-src 'self'",
@@ -166,7 +203,7 @@ function sendJson(req, res, statusCode, data) {
     ...SECURITY_HEADERS,
     ...corsHeaders(req),
     "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Demo-Role"
+    "Access-Control-Allow-Headers": "Content-Type, Authorization"
   });
   res.end(body);
 }
@@ -565,7 +602,7 @@ async function handleApi(req, res) {
     res.writeHead(204, {
       ...SECURITY_HEADERS,
       ...corsHeaders(req),
-      "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Demo-Role",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization",
       "Access-Control-Allow-Methods": "GET,POST,PATCH,PUT,DELETE,OPTIONS"
     });
     res.end();
@@ -1023,11 +1060,21 @@ if (req.method === "GET" && url.pathname === "/api/bookings") {
   return;
 }
   if (req.method === "GET" && url.pathname === "/api/bookings/lookup") {
+    // Public guest tracking, but hardened: the caller must supply the FULL
+    // booking phone number (matched on its last 10 digits) instead of the old
+    // 4-digit suffix — sequential booking IDs plus a 4-digit guess was far too
+    // weak a proof for patient name, contact details and live GPS. The rate is
+    // capped per IP and only tracking-relevant fields come back; notes are
+    // never exposed here and the phone number is masked.
+    if (!checkPublicWriteRateLimit(`booking-lookup:${getRequestMeta(req).ip || "unknown"}`)) {
+      sendJson(req, res, 429, { error: "Too many lookups. Please try again in a moment.", code: "RATE_LIMITED" });
+      return;
+    }
     const id = Number(url.searchParams.get("id"));
-    const phone = lastDigits(url.searchParams.get("phone"));
+    const phoneDigits = String(url.searchParams.get("phone") || "").replace(/\D/g, "");
 
-    if (!Number.isInteger(id) || id < 1 || phone.length < 4) {
-      sendJson(req, res, 400, { error: "A valid booking ID and phone number are required." });
+    if (!Number.isInteger(id) || id < 1 || phoneDigits.length < 10) {
+      sendJson(req, res, 400, { error: "A valid booking ID and the full phone number used for the booking are required." });
       return;
     }
 
@@ -1035,7 +1082,11 @@ if (req.method === "GET" && url.pathname === "/api/bookings") {
       const result = await pool.query(
         `
           SELECT
-            b.*,
+            b.id, b.patient_name, b.phone, b.pickup, b.destination,
+            b.emergency_type, b.ambulance_id, b.status,
+            b.pickup_lat, b.pickup_lng, b.destination_lat, b.destination_lng,
+            b.dispatch_distance_km,
+            b.created_at, b.updated_at,
             a.registration_number AS ambulance_registration_number,
             a.type AS ambulance_type,
             a.driver_name AS ambulance_driver_name,
@@ -1044,10 +1095,11 @@ if (req.method === "GET" && url.pathname === "/api/bookings") {
           FROM bookings b
           LEFT JOIN ambulances a ON a.id = b.ambulance_id
           WHERE b.id = $1
-            AND regexp_replace(b.phone, '[^0-9]', '', 'g') LIKE '%' || $2
+            AND RIGHT(regexp_replace(b.phone, '[^0-9]', '', 'g'), 10)
+                = RIGHT($2, 10)
           LIMIT 1
         `,
-        [id, phone]
+        [id, phoneDigits]
       );
 
       const row = result.rows[0];
@@ -1056,7 +1108,20 @@ if (req.method === "GET" && url.pathname === "/api/bookings") {
         return;
       }
 
-      const booking = bookingRowToApi(row);
+      const booking = {
+        id: Number(row.id),
+        destination: row.destination,
+        emergencyType: row.emergency_type,
+        ambulanceId: row.ambulance_id === null ? null : Number(row.ambulance_id),
+        status: row.status,
+        pickupLat: row.pickup_lat === null ? null : Number(row.pickup_lat),
+        pickupLng: row.pickup_lng === null ? null : Number(row.pickup_lng),
+        destinationLat: row.destination_lat === null ? null : Number(row.destination_lat),
+        destinationLng: row.destination_lng === null ? null : Number(row.destination_lng),
+        dispatchDistanceKm: row.dispatch_distance_km === null ? null : Number(row.dispatch_distance_km),
+        createdAt: row.created_at,
+        updatedAt: row.updated_at
+      };
       booking.ambulance = row.ambulance_id === null ? null : {
         registrationNumber: row.ambulance_registration_number,
         type: row.ambulance_type,
@@ -1283,7 +1348,9 @@ try {
       return;
     }
     const body = await parseBody(req);
-    const sessionId = String(body.sessionId || "anonymous");
+    // Keep the conversation key in an HttpOnly cookie. A client-supplied
+    // sessionId could be guessed or reused to pollute another chat flow.
+    const sessionId = getChatSessionId(req, res);
     const prior = chatSessions.get(sessionId) || emptySession();
     const result = handleMessage(body.message, prior);
     chatSessions.set(sessionId, result.session || emptySession());
@@ -1353,7 +1420,17 @@ try {
 // ---------------------------------------------------------------------
 // Create server
 // ---------------------------------------------------------------------
-const server = http.createServer((req, res) => {
+async function handleRequest(req, res) {
+  // Behind a reverse proxy (TRUST_PROXY=true), politely move plain-HTTP
+  // requests to HTTPS so no token or password ever travels in the clear.
+  if (String(process.env.TRUST_PROXY || "").toLowerCase() === "true" &&
+      (req.headers["x-forwarded-proto"] || "").toString().split(",")[0].trim() === "http") {
+    const host = req.headers["x-forwarded-host"] || req.headers.host || "";
+    res.writeHead(301, { Location: `https://${host}${req.url}` });
+    res.end();
+    return;
+  }
+
   // API requests
   if (req.url.startsWith("/api/")) {
     handleApi(req, res).catch(error => {
@@ -1375,8 +1452,57 @@ const server = http.createServer((req, res) => {
 
   // All other requests → static files (with SPA fallback)
   serveStatic(req, res);
-});
+}
 
-server.listen(PORT, HOST, () => {
-  console.log(`HindCare demo running at http://${HOST}:${PORT}`);
-});
+const isProduction = process.env.NODE_ENV === "production";
+const directTlsConfigured = Boolean(process.env.TLS_KEY_PATH && process.env.TLS_CERT_PATH);
+const proxyTlsConfigured = String(process.env.TRUST_PROXY || "").toLowerCase() === "true";
+
+if (isProduction && !directTlsConfigured && !proxyTlsConfigured) {
+  console.error("[HindCare] Refusing to start production without HTTPS or TRUST_PROXY=true.");
+  process.exit(1);
+}
+
+let server;
+if (process.env.TLS_KEY_PATH && process.env.TLS_CERT_PATH) {
+  // Direct-TLS mode: terminate HTTPS in Node itself when there's no reverse
+  // proxy. Set TLS_KEY_PATH/TLS_CERT_PATH to PEM files to enable.
+  const https = require("https");
+  let tlsOptions;
+  try {
+    tlsOptions = {
+      key: fs.readFileSync(process.env.TLS_KEY_PATH),
+      cert: fs.readFileSync(process.env.TLS_CERT_PATH)
+    };
+  } catch (error) {
+    console.error("[HindCare] Could not read TLS key/cert files:", error.message);
+    process.exit(1);
+  }
+  server = https.createServer(tlsOptions, handleRequest);
+} else {
+  // Default: plain HTTP on HOST:PORT — put this behind an HTTPS reverse proxy
+  // (nginx/Caddy/traefik) for anything user-facing, with TRUST_PROXY=true so
+  // plaintext requests are redirected.
+  server = http.createServer(handleRequest);
+}
+
+// Hydrate users/sessions/audit history from PostgreSQL BEFORE accepting any
+// traffic, then seed demo data only if explicitly opted in. If auth state
+// can't be loaded, production refuses to start rather than booting with an
+// empty account store (which would silently break every login).
+initAuthPersistence(pool, store, {
+  snapshot: snapshotAuthCounters,
+  restore: restoreAuthCounter
+})
+  .catch(error => {
+    console.error("[HindCare] Failed to load auth state from PostgreSQL:", error.message);
+    if (isProduction) process.exit(1);
+    console.warn("[HindCare] Continuing WITHOUT durable auth state (development only).");
+  })
+  .then(() => maybeSeedDemoUsers())
+  .finally(() => {
+    server.listen(PORT, HOST, () => {
+      const scheme = process.env.TLS_KEY_PATH && process.env.TLS_CERT_PATH ? "https" : "http";
+      console.log(`HindCare running at ${scheme}://${HOST}:${PORT}`);
+    });
+  });

@@ -17,6 +17,17 @@ const {
 
 const { requireAuth, auditAction, validateEmail, validatePhone, validatePassword } = require("../auth/middleware");
 
+function hasValidRasterSignature(dataUri) {
+  const match = String(dataUri || "").match(/^data:image\/(png|jpeg|webp|gif);base64,([A-Za-z0-9+/=]+)$/);
+  if (!match) return false;
+  const bytes = Buffer.from(match[2], "base64");
+  if (bytes.length < 12) return false;
+  if (match[1] === "png") return bytes.subarray(0, 8).equals(Buffer.from("89504e470d0a1a0a", "hex"));
+  if (match[1] === "jpeg") return bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  if (match[1] === "gif") return bytes.subarray(0, 6).toString("ascii") === "GIF87a" || bytes.subarray(0, 6).toString("ascii") === "GIF89a";
+  return bytes.subarray(0, 4).toString("ascii") === "RIFF" && bytes.subarray(8, 12).toString("ascii") === "WEBP";
+}
+
 const HOSPITAL_SUB_ROLES = {
   doctor: "hospital_doctor",
   reception: "hospital_reception",
@@ -87,8 +98,7 @@ async function handleProfileRoutes(req, res, url, parseBody, sendJson, pool) {
     // and not in every future context this data URI might end up in)
     // sandbox scripts inside <img>-rendered SVGs, so this shouldn't be the
     // only thing standing between an upload and script execution.
-    const allowedPrefixes = ["data:image/png;base64,", "data:image/jpeg;base64,", "data:image/webp;base64,", "data:image/gif;base64,"];
-    if (!allowedPrefixes.some(prefix => imageData.startsWith(prefix))) {
+    if (!hasValidRasterSignature(imageData)) {
       sendJson(req, res, 400, { error: "Image must be a PNG, JPEG, WEBP, or GIF." });
       return true;
     }

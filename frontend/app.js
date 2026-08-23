@@ -674,19 +674,19 @@ const PHONE_PATTERN = /^\+?[0-9][0-9\s-]{6,17}$/;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const patientState = {
-  accessToken: sessionStorage.getItem(`${PATIENT_KEY}_token`) || null,
-  refreshToken: sessionStorage.getItem(`${PATIENT_KEY}_refresh`) || null,
+  accessToken: null,
+  refreshToken: null,
   user: JSON.parse(sessionStorage.getItem(`${PATIENT_KEY}_user`) || "null"),
   profile: JSON.parse(sessionStorage.getItem(`${PATIENT_KEY}_profile`) || "null")
 };
 
 function savePatientAuth(data) {
-  patientState.accessToken = data.accessToken;
-  patientState.refreshToken = data.refreshToken;
+  patientState.accessToken = null;
+  patientState.refreshToken = null;
   patientState.user = data.user;
   patientState.profile = data.profile;
-  sessionStorage.setItem(`${PATIENT_KEY}_token`, data.accessToken);
-  if (data.refreshToken) sessionStorage.setItem(`${PATIENT_KEY}_refresh`, data.refreshToken);
+  sessionStorage.removeItem(`${PATIENT_KEY}_token`);
+  sessionStorage.removeItem(`${PATIENT_KEY}_refresh`);
   sessionStorage.setItem(`${PATIENT_KEY}_user`, JSON.stringify(data.user));
   sessionStorage.setItem(`${PATIENT_KEY}_profile`, JSON.stringify(data.profile));
 }
@@ -706,25 +706,20 @@ async function patientApi(path, options = {}) {
   const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
   if (patientState.accessToken) headers.Authorization = `Bearer ${patientState.accessToken}`;
 
-  let response = await fetch(path, { ...options, headers });
+  let response = await fetch(path, { ...options, headers, credentials: "same-origin" });
   let data = await response.json().catch(() => ({}));
 
-  if (response.status === 401 && patientState.refreshToken && !options._retried) {
+  if (response.status === 401 && !options._retried &&
+      !["/api/auth/login", "/api/auth/signup"].includes(path)) {
     const refreshRes = await fetch("/api/auth/refresh", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ refreshToken: patientState.refreshToken })
+      body: JSON.stringify({})
     });
     if (refreshRes.ok) {
       const refreshData = await refreshRes.json();
-      patientState.accessToken = refreshData.accessToken;
-      sessionStorage.setItem(`${PATIENT_KEY}_token`, refreshData.accessToken);
-      // The server rotates refresh tokens on every use — persist the new one,
-      // or the next refresh would be (correctly) treated as token replay.
-      if (refreshData.refreshToken) {
-        patientState.refreshToken = refreshData.refreshToken;
-        sessionStorage.setItem(`${PATIENT_KEY}_refresh`, refreshData.refreshToken);
-      }
+      patientState.accessToken = null;
+      patientState.refreshToken = null;
       return patientApi(path, { ...options, _retried: true });
     }
     clearPatientAuth();
@@ -956,9 +951,6 @@ function completeSignIn(data) {
     setAccountView("dashboard");
   } else {
     // Hospital/fleet/driver accounts operate from /profile/, not this panel.
-    sessionStorage.setItem("hindcare_auth_token", data.accessToken);
-    sessionStorage.setItem("hindcare_auth_refresh", data.refreshToken);
-    sessionStorage.setItem("hindcare_auth_user", JSON.stringify(data.user));
     window.location.href = data.redirectTo || "/profile/";
   }
 }
@@ -1028,9 +1020,6 @@ document.getElementById("account-signup-form").addEventListener("submit", async 
       // Hospital/fleet/driver accounts use the operational dashboard at
       // /profile/, not the lightweight patient panel — hand off the
       // session using the same storage keys that dashboard already reads.
-    sessionStorage.setItem("hindcare_auth_token", data.accessToken);
-    sessionStorage.setItem("hindcare_auth_refresh", data.refreshToken);
-    sessionStorage.setItem("hindcare_auth_user", JSON.stringify(data.user));
       window.location.href = "/profile/";
     }
   } catch (error) {
@@ -1098,12 +1087,9 @@ document.getElementById("forgot-request-btn").addEventListener("click", async ()
   try {
     const body = EMAIL_PATTERN.test(identifier) ? { email: identifier } : { phone: identifier };
     const data = await patientApi("/api/auth/forgot-password", { method: "POST", body: JSON.stringify(body) });
-    resultEl.textContent = data.demoResetToken
-      ? `Reset code (demo): ${data.demoResetToken}`
-      : "If an account exists, reset instructions have been sent.";
+    resultEl.textContent = "If an account exists, reset instructions have been sent.";
     document.getElementById("forgot-step-request").classList.add("hidden");
     document.getElementById("forgot-step-reset").classList.remove("hidden");
-    if (data.demoResetToken) document.getElementById("forgot-token").value = data.demoResetToken;
   } catch (error) {
     resultEl.textContent = friendlyAuthError(error);
   } finally {

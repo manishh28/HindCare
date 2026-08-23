@@ -20,12 +20,25 @@ const EMPLOYEE_ID_PATTERN = /^[A-Z]{2,4}-[0-9]{4,6}$/i;
 function extractBearerToken(req) {
   const header = req.headers.authorization || "";
   const match = header.match(/^Bearer\s+(.+)$/i);
-  return match ? match[1] : null;
+  if (match) return match[1];
+  const cookies = String(req.headers.cookie || "").split(";");
+  const accessCookie = cookies.find(cookie => cookie.trim().startsWith("hindcare_access="));
+  if (!accessCookie) return null;
+  try {
+    return decodeURIComponent(accessCookie.trim().slice("hindcare_access=".length));
+  } catch {
+    return null;
+  }
 }
 
 function getRequestMeta(req) {
+  const forwardedFor = req.headers["x-forwarded-for"];
+  const trustProxy = String(process.env.TRUST_PROXY || "").toLowerCase() === "true";
+  const forwardedIp = trustProxy && forwardedFor
+    ? String(forwardedFor).split(",")[0].trim()
+    : null;
   return {
-    ip: req.socket?.remoteAddress || null,
+    ip: forwardedIp || req.socket?.remoteAddress || null,
     userAgent: req.headers["user-agent"] || null
   };
 }

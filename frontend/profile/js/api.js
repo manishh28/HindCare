@@ -1,8 +1,8 @@
 const PROFILE_STORAGE_KEY = "hindcare_auth";
 
 const profileState = {
-  accessToken: sessionStorage.getItem(`${PROFILE_STORAGE_KEY}_token`) || null,
-  refreshToken: sessionStorage.getItem(`${PROFILE_STORAGE_KEY}_refresh`) || null,
+  accessToken: null,
+  refreshToken: null,
   user: JSON.parse(sessionStorage.getItem(`${PROFILE_STORAGE_KEY}_user`) || "null"),
   profileData: null
 };
@@ -16,25 +16,19 @@ async function profileApi(path, options = {}) {
     headers.Authorization = `Bearer ${profileState.accessToken}`;
   }
 
-  let response = await fetch(path, { ...options, headers });
+  let response = await fetch(path, { ...options, headers, credentials: "same-origin" });
   let data = await response.json().catch(() => ({}));
 
-  if (response.status === 401 && profileState.refreshToken && !options._retried) {
+  if (response.status === 401 && !options._retried) {
     const refreshRes = await fetch("/api/auth/refresh", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ refreshToken: profileState.refreshToken })
+      body: JSON.stringify({})
     });
     if (refreshRes.ok) {
       const refreshData = await refreshRes.json();
-      profileState.accessToken = refreshData.accessToken;
-      sessionStorage.setItem(`${PROFILE_STORAGE_KEY}_token`, refreshData.accessToken);
-      // The server rotates refresh tokens on every use — persist the new one,
-      // or the next refresh would be (correctly) treated as token replay.
-      if (refreshData.refreshToken) {
-        profileState.refreshToken = refreshData.refreshToken;
-        sessionStorage.setItem(`${PROFILE_STORAGE_KEY}_refresh`, refreshData.refreshToken);
-      }
+      profileState.accessToken = null;
+      profileState.refreshToken = null;
       return profileApi(path, { ...options, _retried: true });
     }
     clearProfileAuth();
@@ -56,10 +50,8 @@ function clearProfileAuth() {
 }
 
 function requireAuth() {
-  if (!profileState.accessToken) {
-    window.location.href = "/?auth=signin";
-    return false;
-  }
+  // Authentication is carried by an HttpOnly cookie. The profile request
+  // below is the source of truth; it will redirect if the cookie is invalid.
   return true;
 }
 

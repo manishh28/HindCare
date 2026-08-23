@@ -1,18 +1,18 @@
 const AUTH_STORAGE_KEY = "hindcare_auth";
 
 const authState = {
-  accessToken: sessionStorage.getItem(`${AUTH_STORAGE_KEY}_token`) || null,
-  refreshToken: sessionStorage.getItem(`${AUTH_STORAGE_KEY}_refresh`) || null,
+  accessToken: null,
+  refreshToken: null,
   user: JSON.parse(sessionStorage.getItem(`${AUTH_STORAGE_KEY}_user`) || "null"),
   rememberMe: sessionStorage.getItem(`${AUTH_STORAGE_KEY}_remember`) === "true"
 };
 
 function saveAuth(data) {
-  authState.accessToken = data.accessToken;
-  authState.refreshToken = data.refreshToken;
+  authState.accessToken = null;
+  authState.refreshToken = null;
   authState.user = data.user;
-  sessionStorage.setItem(`${AUTH_STORAGE_KEY}_token`, data.accessToken);
-  if (data.refreshToken) sessionStorage.setItem(`${AUTH_STORAGE_KEY}_refresh`, data.refreshToken);
+  sessionStorage.removeItem(`${AUTH_STORAGE_KEY}_token`);
+  sessionStorage.removeItem(`${AUTH_STORAGE_KEY}_refresh`);
   sessionStorage.setItem(`${AUTH_STORAGE_KEY}_user`, JSON.stringify(data.user));
 }
 
@@ -38,19 +38,20 @@ async function authApi(path, options = {}) {
     headers.Authorization = `Bearer ${authState.accessToken}`;
   }
 
-  let response = await fetch(path, { ...options, headers });
+  let response = await fetch(path, { ...options, headers, credentials: "same-origin" });
   let data = await response.json().catch(() => ({}));
 
-  if (response.status === 401 && authState.refreshToken && !options._retried) {
+  if (response.status === 401 && !options._retried &&
+      !["/api/auth/login", "/api/auth/signup"].includes(path)) {
     const refreshRes = await fetch("/api/auth/refresh", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ refreshToken: authState.refreshToken })
+      body: JSON.stringify({})
     });
     if (refreshRes.ok) {
       const refreshData = await refreshRes.json();
-      authState.accessToken = refreshData.accessToken;
-      sessionStorage.setItem(`${AUTH_STORAGE_KEY}_token`, refreshData.accessToken);
+      authState.accessToken = null;
+      authState.refreshToken = null;
       return authApi(path, { ...options, _retried: true });
     }
     clearAuth();
