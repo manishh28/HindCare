@@ -26,7 +26,28 @@ function clearAuth() {
 }
 
 function isAuthenticated() {
-  return Boolean(authState.accessToken);
+  // Tokens live in HttpOnly cookies now (invisible to JS), so the persisted
+  // user object is the client-side hint that a session exists.
+  return Boolean(authState.user);
+}
+
+// Single-flight refresh: when several API calls 401 at once they must share
+// ONE refresh request — two parallel refreshes present the same token and the
+// second looks like replay.
+let refreshInFlight = null;
+
+function refreshSession() {
+  if (!refreshInFlight) {
+    refreshInFlight = fetch("/api/auth/refresh", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+      credentials: "same-origin"
+    }).finally(() => {
+      setTimeout(() => { refreshInFlight = null; }, 0);
+    });
+  }
+  return refreshInFlight;
 }
 
 async function authApi(path, options = {}) {
@@ -43,15 +64,13 @@ async function authApi(path, options = {}) {
 
   if (response.status === 401 && !options._retried &&
       !["/api/auth/login", "/api/auth/signup"].includes(path)) {
-    const refreshRes = await fetch("/api/auth/refresh", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({})
-    });
+    const refreshRes = await refreshSession();
     if (refreshRes.ok) {
-      const refreshData = await refreshRes.json();
-      authState.accessToken = null;
-      authState.refreshToken = null;
+      return authApi(path, { ...options, _retried: true });
+    }
+    if (refreshRes.status === 409) {
+      // Another tab refreshed a moment before us; the rotated cookies are
+      // already in the shared cookie jar, so simply retry with them.
       return authApi(path, { ...options, _retried: true });
     }
     clearAuth();

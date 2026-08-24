@@ -7,6 +7,25 @@ const profileState = {
   profileData: null
 };
 
+// Single-flight refresh: when several API calls 401 at once they must share
+// ONE refresh request — two parallel refreshes present the same token and the
+// second looks like replay.
+let refreshInFlight = null;
+
+function refreshProfileSession() {
+  if (!refreshInFlight) {
+    refreshInFlight = fetch("/api/auth/refresh", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+      credentials: "same-origin"
+    }).finally(() => {
+      setTimeout(() => { refreshInFlight = null; }, 0);
+    });
+  }
+  return refreshInFlight;
+}
+
 async function profileApi(path, options = {}) {
   const headers = {
     "Content-Type": "application/json",
@@ -20,15 +39,13 @@ async function profileApi(path, options = {}) {
   let data = await response.json().catch(() => ({}));
 
   if (response.status === 401 && !options._retried) {
-    const refreshRes = await fetch("/api/auth/refresh", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({})
-    });
+    const refreshRes = await refreshProfileSession();
     if (refreshRes.ok) {
-      const refreshData = await refreshRes.json();
-      profileState.accessToken = null;
-      profileState.refreshToken = null;
+      return profileApi(path, { ...options, _retried: true });
+    }
+    if (refreshRes.status === 409) {
+      // Another tab refreshed a moment before us; the rotated cookies are
+      // already in the shared cookie jar, so simply retry with them.
       return profileApi(path, { ...options, _retried: true });
     }
     clearProfileAuth();

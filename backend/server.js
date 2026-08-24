@@ -75,7 +75,7 @@ const { initAuthPersistence } = require("./auth/persist");
 const publicWriteRateLimits = new Map();
 const PUBLIC_WRITE_WINDOW_MS = 60000;
 const PUBLIC_WRITE_MAX = 20;
-function checkPublicWriteRateLimit(key) {
+function checkPublicWriteRateLimit(key, max = PUBLIC_WRITE_MAX) {
   const now = Date.now();
   const entry = publicWriteRateLimits.get(key) || { count: 0, resetAt: now + PUBLIC_WRITE_WINDOW_MS };
   if (now > entry.resetAt) {
@@ -90,7 +90,7 @@ function checkPublicWriteRateLimit(key) {
       if (publicWriteRateLimits.size <= 8000) break;
     }
   }
-  return entry.count <= PUBLIC_WRITE_MAX;
+  return entry.count <= max;
 }
 
 const PORT = Number(process.env.PORT || 4173);
@@ -101,6 +101,15 @@ const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || `http://${HOST}:${PORT}`
   .split(",")
   .map(origin => origin.trim())
   .filter(Boolean);
+
+// Hosts we're willing to redirect to — used by the HTTP→HTTPS upgrade below
+// so a attacker-crafted Host/x-forwarded-host header can't produce an open
+// redirect to an arbitrary domain.
+const ALLOWED_HOSTS = new Set(
+  ALLOWED_ORIGINS.map(origin => {
+    try { return new URL(origin).host; } catch { return null; }
+  }).filter(Boolean)
+);
 
 const EMERGENCY_TYPES = ["general", "cardiac", "trauma", "icu"];
 const AMBULANCE_TYPES = ["basic", "advanced", "icu", "neonatal"];
@@ -172,7 +181,7 @@ const SECURITY_HEADERS = {
     "script-src 'self'",
     "style-src 'self' https://fonts.googleapis.com",
     "font-src 'self' https://fonts.gstatic.com",
-    "img-src 'self' data:",
+    "img-src 'self' data: https://tile.openstreetmap.org",
     "connect-src 'self'",
     "frame-ancestors 'none'",
     "base-uri 'self'",
@@ -1064,9 +1073,10 @@ if (req.method === "GET" && url.pathname === "/api/bookings") {
     // booking phone number (matched on its last 10 digits) instead of the old
     // 4-digit suffix — sequential booking IDs plus a 4-digit guess was far too
     // weak a proof for patient name, contact details and live GPS. The rate is
-    // capped per IP and only tracking-relevant fields come back; notes are
-    // never exposed here and the phone number is masked.
-    if (!checkPublicWriteRateLimit(`booking-lookup:${getRequestMeta(req).ip || "unknown"}`)) {
+    // capped per IP (higher than writes because the tracking page polls every
+    // 5 s) and only tracking-relevant fields come back; notes are never
+    // exposed here and the phone number is masked.
+    if (!checkPublicWriteRateLimit(`booking-lookup:${getRequestMeta(req).ip || "unknown"}`, 60)) {
       sendJson(req, res, 429, { error: "Too many lookups. Please try again in a moment.", code: "RATE_LIMITED" });
       return;
     }
@@ -1423,10 +1433,17 @@ try {
 async function handleRequest(req, res) {
   // Behind a reverse proxy (TRUST_PROXY=true), politely move plain-HTTP
   // requests to HTTPS so no token or password ever travels in the clear.
+  // The redirect target host must be one we actually serve — a spoofed
+  // Host/x-forwarded-host header must not become an open redirect.
   if (String(process.env.TRUST_PROXY || "").toLowerCase() === "true" &&
       (req.headers["x-forwarded-proto"] || "").toString().split(",")[0].trim() === "http") {
-    const host = req.headers["x-forwarded-host"] || req.headers.host || "";
-    res.writeHead(301, { Location: `https://${host}${req.url}` });
+    const host = String(req.headers["x-forwarded-host"] || req.headers.host || "")
+      .split(",")[0].trim();
+    if (ALLOWED_HOSTS.has(host)) {
+      res.writeHead(301, { Location: `https://${host}${req.url}` });
+    } else {
+      res.writeHead(301, { Location: "/" });
+    }
     res.end();
     return;
   }

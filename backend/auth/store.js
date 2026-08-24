@@ -422,11 +422,16 @@ function createSession(userId, meta = {}) {
 
 // Refresh-token rotation: the presented token is retired (hash kept for reuse
 // detection) and a fresh one becomes the only valid credential for the session.
+// Each retired hash records WHEN it was rotated out — replays inside a short
+// grace window are treated as harmless concurrent refreshes (two tabs racing),
+// while older replays indicate a stolen token.
+const ROTATION_REPLAY_GRACE_MS = 15 * 1000;
+
 function rotateSessionRefreshToken(session) {
   const refreshToken = generateSecureToken();
   session.previousTokenHashes = [
     ...(session.previousTokenHashes || []),
-    session.refreshTokenHash
+    { hash: session.refreshTokenHash, rotatedAt: new Date().toISOString() }
   ].slice(-5);
   session.refreshTokenHash = hashToken(refreshToken);
   markAuthStateDirty();
@@ -440,15 +445,27 @@ function findSessionByRefreshToken(refreshToken) {
   ) || null;
 }
 
-// A rotated-out token being presented again means the token was stolen at
-// some point — the caller must treat every session of that user as compromised.
+// A rotated-out token being presented again usually means the token was
+// stolen at some point — the caller must treat every session of that user as
+// compromised (unless it's within the concurrency grace window).
 function findSessionByRotatedToken(refreshToken) {
   const tokenHash = hashToken(refreshToken);
   return store.sessions.find(
     s =>
       Array.isArray(s.previousTokenHashes) &&
-      s.previousTokenHashes.includes(tokenHash)
+      s.previousTokenHashes.some(entry => (typeof entry === "string" ? entry : entry.hash) === tokenHash)
   ) || null;
+}
+
+// True when this rotated-out token was retired only moments ago — almost
+// certainly two tabs refreshing in parallel, not an attacker replaying a
+// stolen token hours later.
+function isRecentTokenRotation(session, refreshToken) {
+  const tokenHash = hashToken(refreshToken);
+  const entry = (session.previousTokenHashes || [])
+    .find(e => (typeof e === "string" ? e : e.hash) === tokenHash);
+  if (!entry || typeof entry === "string" || !entry.rotatedAt) return false;
+  return Date.now() - new Date(entry.rotatedAt).getTime() < ROTATION_REPLAY_GRACE_MS;
 }
 
 function revokeSession(sessionId) {
@@ -603,6 +620,7 @@ module.exports = {
   rotateSessionRefreshToken,
   findSessionByRefreshToken,
   findSessionByRotatedToken,
+  isRecentTokenRotation,
   revokeSession,
   revokeAllSessions,
   getProfile,

@@ -18,6 +18,7 @@ const {
   rotateSessionRefreshToken,
   findSessionByRefreshToken,
   findSessionByRotatedToken,
+  isRecentTokenRotation,
   revokeSession,
   revokeAllSessions,
   sanitizeUser,
@@ -583,10 +584,20 @@ async function handleAuthRoutes(req, res, url, parseBody, sendJson) {
         cookieRefreshToken = "";
       }
     }
-    const refreshToken = body.refreshToken || cookieRefreshToken;
+    // Prefer the HttpOnly cookie whenever it exists. This prevents an older
+    // browser-held token from overriding the current rotated cookie.
+    const refreshToken = cookieRefreshToken || body.refreshToken || "";
     const session = findSessionByRefreshToken(refreshToken);
     if (!session) {
       const reused = findSessionByRotatedToken(refreshToken);
+      if (reused && isRecentTokenRotation(reused, refreshToken)) {
+        // Retired only seconds ago — two tabs/requests racing to refresh the
+        // same session, not theft. Fail this one request without nuking the
+        // user's other sessions.
+        recordLoginAttempt(null, false, "refresh", { ...meta, failureReason: "concurrent_refresh" });
+        sendJson(req, res, 409, { error: "Session was refreshed elsewhere. Please retry.", code: "CONCURRENT_REFRESH" });
+        return true;
+      }
       if (reused) {
         revokeAllSessions(reused.userId);
         recordAudit(null, "session.replay_detected", "session", reused.id, { userId: reused.userId });
@@ -608,7 +619,10 @@ async function handleAuthRoutes(req, res, url, parseBody, sendJson) {
     const newRefreshToken = rotateSessionRefreshToken(session);
     const tokens = issueTokens(user, session.id);
     setAuthCookies(res, tokens.accessToken, newRefreshToken);
-    sendJson(req, res, 200, tokens);
+    // Keep returning refreshToken in the JSON body: cookie-less API clients
+    // and the existing web clients persist it for the next rotation. The
+    // HttpOnly cookie stays as defense-in-depth on top of this.
+    sendJson(req, res, 200, { ...tokens, refreshToken: newRefreshToken });
     return true;
   }
 

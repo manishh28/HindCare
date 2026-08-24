@@ -435,6 +435,7 @@ async function loadSavedBooking() {
   try {
     const booking = await api(`/api/bookings/lookup?id=${encodeURIComponent(saved.id)}&phone=${encodeURIComponent(saved.phone)}`);
     content.innerHTML = renderTrackingDetails(booking);
+    mountTrackingMap(booking);
     startTrackingRefresh(saved.id, saved.phone, booking, "saved-booking-content");
   } catch (error) {
     content.innerHTML = `<div class="saved-booking-empty">${escapeHtml(error.message)}. You can create a new booking from the booking form.</div>`;
@@ -582,6 +583,51 @@ function estimatedArrivalMinutes(distanceKm) {
 }
 
 let trackingRefreshTimer = null;
+let trackingLeafletMap = null;
+
+function mapPoint(lat, lng) {
+  if (!Number.isFinite(Number(lat)) || !Number.isFinite(Number(lng))) return null;
+  return [Number(lat), Number(lng)];
+}
+
+function trackingMarker(label, className) {
+  return L.divIcon({
+    className: "tracking-leaflet-icon",
+    html: `<span class="tracking-leaflet-marker ${className}" title="${label}">${className === "ambulance" ? "🚑" : className === "hospital" ? "✚" : "●"}</span>`,
+    iconSize: [30, 30],
+    iconAnchor: [15, 15]
+  });
+}
+
+function mountTrackingMap(booking) {
+  const container = document.getElementById("tracking-map");
+  if (!container || !window.L) return;
+
+  if (trackingLeafletMap) trackingLeafletMap.remove();
+
+  const points = [
+    mapPoint(booking.pickupLat, booking.pickupLng),
+    mapPoint(booking.destinationLat, booking.destinationLng),
+    booking.ambulance && mapPoint(booking.ambulance.currentLat, booking.ambulance.currentLng)
+  ].filter(Boolean);
+  if (!points.length) return;
+
+  trackingLeafletMap = L.map(container, { zoomControl: true, scrollWheelZoom: false });
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution: "© OpenStreetMap contributors"
+  }).addTo(trackingLeafletMap);
+
+  const pickup = mapPoint(booking.pickupLat, booking.pickupLng);
+  const destination = mapPoint(booking.destinationLat, booking.destinationLng);
+  const ambulance = booking.ambulance && mapPoint(booking.ambulance.currentLat, booking.ambulance.currentLng);
+  if (pickup) L.marker(pickup, { icon: trackingMarker("Pickup location", "pickup") }).addTo(trackingLeafletMap).bindTooltip("Pickup location");
+  if (destination) L.marker(destination, { icon: trackingMarker("Hospital destination", "hospital") }).addTo(trackingLeafletMap).bindTooltip("Hospital destination");
+  if (ambulance) L.marker(ambulance, { icon: trackingMarker("Ambulance location", "ambulance") }).addTo(trackingLeafletMap).bindTooltip("Ambulance location");
+  if (pickup && destination) L.polyline([pickup, destination], { color: "#d92038", weight: 4, dashArray: "8 8" }).addTo(trackingLeafletMap);
+  trackingLeafletMap.fitBounds(L.latLngBounds(points).pad(0.25), { maxZoom: 14 });
+  window.setTimeout(() => trackingLeafletMap?.invalidateSize(), 80);
+}
 
 function trackingPoint(lat, lng) {
   if (!Number.isFinite(Number(lat)) || !Number.isFinite(Number(lng))) return null;
@@ -591,42 +637,58 @@ function trackingPoint(lat, lng) {
 }
 
 function renderTrackingMap(booking) {
-  const pickup = trackingPoint(booking.pickupLat, booking.pickupLng);
-  const destination = trackingPoint(booking.destinationLat, booking.destinationLng);
-  const ambulance = booking.ambulance ? trackingPoint(booking.ambulance.currentLat, booking.ambulance.currentLng) : null;
+  const pickup = mapPoint(booking.pickupLat, booking.pickupLng);
+  const destination = mapPoint(booking.destinationLat, booking.destinationLng);
+  const ambulance = booking.ambulance && mapPoint(booking.ambulance.currentLat, booking.ambulance.currentLng);
   if (!pickup && !destination && !ambulance) return "";
-
-  const lineStart = ambulance || pickup || destination;
-  const lineEnd = pickup || destination || ambulance;
   return `
     <div class="tracking-map-wrap">
-      <div class="tracking-map" id="tracking-map" role="img" aria-label="Demo ambulance route map">
-        <div class="map-grid-lines" aria-hidden="true"></div>
-        <div class="map-label map-label-north">LUCKNOW DEMO AREA</div>
-        <svg class="tracking-route" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-          <line id="tracking-route-line" x1="${lineStart.x}" y1="${lineStart.y}" x2="${lineEnd.x}" y2="${lineEnd.y}" />
-        </svg>
-        ${destination ? `<span class="tracking-marker hospital-marker" style="left:${destination.x}%;top:${destination.y}%" title="Hospital destination" aria-label="Hospital destination">✚</span>` : ""}
-        ${pickup ? `<span class="tracking-marker pickup-marker" style="left:${pickup.x}%;top:${pickup.y}%" title="Pickup location" aria-label="Pickup location">●</span>` : ""}
-        ${ambulance ? `<span class="tracking-marker ambulance-marker" id="tracking-ambulance-marker" style="left:${ambulance.x}%;top:${ambulance.y}%" title="Ambulance location" aria-label="Ambulance location">🚑</span>` : ""}
-      </div>
+      <div class="tracking-map" id="tracking-map" role="img" aria-label="OpenStreetMap ambulance route map"></div>
       <div class="tracking-map-legend"><span><i class="legend-dot ambulance-legend"></i> Ambulance</span><span><i class="legend-dot pickup-legend"></i> Pickup</span><span><i class="legend-dot hospital-legend"></i> Hospital</span></div>
-      <p class="tracking-demo-note">Demo map view. When a driver sends GPS updates, this view refreshes automatically.</p>
+      <p class="tracking-demo-note">OpenStreetMap view. Ambulance movement is simulated until a driver sends GPS updates.</p>
     </div>`;
 }
 
 function renderTrackingDetails(booking) {
   const eta = estimatedArrivalMinutes(booking.dispatchDistanceKm);
   const showEta = eta != null && !["completed", "cancelled"].includes(booking.status);
+  const statusCopy = {
+    requested: ["We are finding an ambulance", "Please stay available. We will update this page when one is assigned."],
+    assigned: ["Your ambulance is assigned", "The ambulance team has received your request and is getting ready."],
+    on_route: ["Your ambulance is on the way", "You can follow its location on the map below."],
+    completed: ["Trip completed", "This ambulance booking has been completed."],
+    cancelled: ["Booking cancelled", "This ambulance booking is no longer active."]
+  }[booking.status] || ["Booking update", "Your booking information is shown below."];
+  const steps = [
+    ["requested", "Request received"],
+    ["assigned", "Ambulance assigned"],
+    ["on_route", "Ambulance on the way"],
+    ["completed", "Trip completed"]
+  ];
+  const activeStep = booking.status === "cancelled" ? -1 : steps.findIndex(([status]) => status === booking.status);
   return `
+    <section class="booking-status-card" aria-live="polite">
+      <div class="booking-status-heading">
+        <div>
+          <p class="booking-kicker">BOOKING #${escapeHtml(booking.id)}</p>
+          <h3>${statusCopy[0]}</h3>
+          <p>${statusCopy[1]}</p>
+        </div>
+        ${statusChip(booking.status)}
+      </div>
+      <div class="booking-steps" aria-label="Booking progress">
+        ${steps.map(([status, label], index) => `<div class="booking-step ${index <= activeStep ? "is-done" : ""} ${index === activeStep ? "is-current" : ""}"><span>${index < activeStep ? "✓" : index + 1}</span><small>${label}</small></div>`).join("")}
+      </div>
+    </section>
+    <section class="booking-summary-card">
+      <div class="booking-summary-item"><span class="booking-summary-icon">📍</span><div><small>Going to</small><strong>${escapeHtml(booking.destination)}</strong></div></div>
+      ${booking.ambulance
+        ? `<div class="booking-summary-item"><span class="booking-summary-icon">🚑</span><div><small>Your ambulance</small><strong>${escapeHtml(booking.ambulance.registrationNumber)}</strong><span>${escapeHtml(booking.ambulance.driverName || "Driver assigned")}</span></div></div>`
+        : `<div class="booking-summary-item"><span class="booking-summary-icon">🚑</span><div><small>Your ambulance</small><strong>Being assigned</strong><span>We will show the details here shortly.</span></div></div>`}
+      ${showEta ? `<div class="booking-eta"><small>Estimated arrival</small><strong>About ${Number(eta)} minute${Number(eta) === 1 ? "" : "s"}</strong><span>This is an estimate and may change with traffic.</span></div>` : ""}
+    </section>
     ${renderTrackingMap(booking)}
-    <div class="tracker-row"><span>Status</span>${statusChip(booking.status)}</div>
-    <div class="tracker-row"><span>Destination</span><span>${escapeHtml(booking.destination)}</span></div>
-    ${booking.ambulance
-      ? `<div class="tracker-row"><span>Ambulance</span><span>${escapeHtml(booking.ambulance.registrationNumber)}</span></div>
-         <div class="tracker-row"><span>Driver</span><span>${escapeHtml(booking.ambulance.driverName)}</span></div>`
-      : `<div class="tracker-row"><span>Ambulance</span><span>Not yet assigned</span></div>`}
-    ${showEta ? `<div class="tracker-row"><span>Est. arrival</span><span>~${Number(eta)} min (approx.)</span></div>` : ""}
+    <p class="booking-help-text">The map refreshes automatically. Keep this page open to follow the latest update.</p>
   `;
 }
 
@@ -640,6 +702,7 @@ function startTrackingRefresh(bookingId, phone, booking, targetId = "saved-booki
       const result = document.getElementById(targetId);
       if (!result) return;
       result.innerHTML = renderTrackingDetails(latest);
+      mountTrackingMap(latest);
       if (["completed", "cancelled"].includes(latest.status)) clearInterval(trackingRefreshTimer);
     } catch {
       // Keep the last known tracking view when a temporary refresh fails.
@@ -702,6 +765,25 @@ function clearPatientAuth() {
   sessionStorage.removeItem(`${PATIENT_KEY}_profile`);
 }
 
+// Single-flight refresh: when several API calls 401 at once they must share
+// ONE refresh request — two parallel refreshes present the same token and the
+// second looks like replay.
+let patientRefreshInFlight = null;
+
+function refreshPatientSession() {
+  if (!patientRefreshInFlight) {
+    patientRefreshInFlight = fetch("/api/auth/refresh", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+      credentials: "same-origin"
+    }).finally(() => {
+      setTimeout(() => { patientRefreshInFlight = null; }, 0);
+    });
+  }
+  return patientRefreshInFlight;
+}
+
 async function patientApi(path, options = {}) {
   const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
   if (patientState.accessToken) headers.Authorization = `Bearer ${patientState.accessToken}`;
@@ -711,15 +793,10 @@ async function patientApi(path, options = {}) {
 
   if (response.status === 401 && !options._retried &&
       !["/api/auth/login", "/api/auth/signup"].includes(path)) {
-    const refreshRes = await fetch("/api/auth/refresh", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({})
-    });
-    if (refreshRes.ok) {
-      const refreshData = await refreshRes.json();
-      patientState.accessToken = null;
-      patientState.refreshToken = null;
+    const refreshRes = await refreshPatientSession();
+    if (refreshRes.ok || refreshRes.status === 409) {
+      // 409 = another tab refreshed a moment before us; the rotated cookies
+      // are already in the shared cookie jar, so simply retry with them.
       return patientApi(path, { ...options, _retried: true });
     }
     clearPatientAuth();

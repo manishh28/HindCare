@@ -51,7 +51,6 @@ const COUNTER_KEYS = [
 
 let dbPool = null;
 let authStore = null;
-let flushTimer = null;
 let debounceTimer = null;
 let flushing = false;
 let dirty = false;
