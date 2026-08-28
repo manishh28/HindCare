@@ -14,5 +14,7 @@ database/*.sqlite
 database/*.sqlite3
 uploads/
 exports/
+strix-scan/
+strix_runs/
 .DS_Store
 Thumbs.db
