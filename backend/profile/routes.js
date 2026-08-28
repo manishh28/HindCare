@@ -5,9 +5,12 @@ const {
   getRoleBySlug,
   getProfile,
   attachProfile,
+  createProvisionedUser,
+  removeUser,
   hashPassword,
   normalizePhone,
   sanitizeUser,
+  repairRoleAssignments,
   store,
   nextUserId,
   nextAddressId,
@@ -328,6 +331,10 @@ async function handleProfileRoutes(req, res, url, parseBody, sendJson, pool) {
       return true;
     }
 
+    // Reconcile profile-backed roles before rendering the control center. This
+    // also repairs a process that was started before the persisted role fix.
+    repairRoleAssignments();
+
     const users = store.users
       .filter(user => user.status !== "deleted")
       .map(user => {
@@ -338,7 +345,7 @@ async function handleProfileRoutes(req, res, url, parseBody, sendJson, pool) {
           email: safe.email,
           phone: safe.phone,
           employeeId: safe.employeeId,
-          role: safe.roleSlug,
+          role: safe.role,
           roleName: safe.roleName,
           status: safe.status,
           lastLoginAt: safe.lastLoginAt,
@@ -347,6 +354,86 @@ async function handleProfileRoutes(req, res, url, parseBody, sendJson, pool) {
       })
       .sort((a, b) => a.roleName.localeCompare(b.roleName) || a.fullName.localeCompare(b.fullName));
     sendJson(req, res, 200, { users, roles: getAdminRoles() });
+    return true;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/admin/partner-accounts") {
+    const auth = requireAuth(req, res, sendJson);
+    if (!auth) return true;
+    if (auth.user.roleSlug !== "super_admin") {
+      sendJson(req, res, 403, { error: "Only the super admin can provision partner accounts.", code: "FORBIDDEN" });
+      return true;
+    }
+
+    const body = await parseBody(req);
+    const roleSlug = String(body.role || "").trim();
+    const fullName = String(body.fullName || "").trim();
+    const organizationName = String(body.organizationName || "").trim();
+    const email = String(body.email || "").trim().toLowerCase();
+    const phone = String(body.phone || "").trim();
+    const verificationReference = String(body.verificationReference || "").trim();
+    const city = String(body.city || "").trim();
+    const address = String(body.address || "").trim();
+    const missing = [
+      ["role", roleSlug], ["fullName", fullName], ["organizationName", organizationName],
+      ["email", email], ["phone", phone], ["verificationReference", verificationReference],
+      ["city", city], ["address", address]
+    ].filter(([, value]) => !value).map(([key]) => key);
+
+    if (missing.length) {
+      sendJson(req, res, 400, { error: "Complete the verified partner details first.", fields: missing });
+      return true;
+    }
+    if (!getRoleBySlug(roleSlug) || !["hospital_admin", "fleet_owner"].includes(roleSlug)) {
+      sendJson(req, res, 400, { error: "Choose Hospital Admin or Ambulance Fleet Owner.", code: "INVALID_PARTNER_ROLE" });
+      return true;
+    }
+    if (!validateEmail(email) || !validatePhone(phone)) {
+      sendJson(req, res, 400, { error: "Enter a valid email and phone number." });
+      return true;
+    }
+
+    let provisioned;
+    try {
+      provisioned = await createProvisionedUser({ roleSlug, fullName, email, phone, organizationName, verificationReference, city, address });
+
+      let hospital = null;
+      if (roleSlug === "hospital_admin") {
+        const hospitalResult = await pool.query(
+          `INSERT INTO hospitals (
+             name, city, address, phone, email, emergency_available,
+             total_beds, available_beds, status, owner_id, departments
+           ) VALUES ($1, $2, $3, $4, $5, TRUE, 0, 0, 'approved', $6, '[]'::jsonb)
+           RETURNING *`,
+          [organizationName, String(body.city || "").trim().slice(0, 80), String(body.address || "").trim().slice(0, 250), phone, email, provisioned.user.id]
+        );
+        hospital = hospitalResult.rows[0];
+        const profile = getProfile(provisioned.user);
+        if (profile) {
+          profile.hospitalId = Number(hospital.id);
+          profile.verificationReference = verificationReference;
+          profile.verificationCompletedAt = new Date().toISOString();
+        }
+      }
+
+      auditAction(req, auth.user.id, "partner.account_provisioned", "user", provisioned.user.id, {
+        role: roleSlug,
+        organizationName,
+        verificationReference,
+        hospitalId: hospital ? Number(hospital.id) : null
+      });
+      sendJson(req, res, 201, {
+        user: sanitizeUser(provisioned.user),
+        profile: provisioned.profile,
+        hospitalId: hospital ? Number(hospital.id) : null,
+        temporaryPassword: provisioned.temporaryPassword,
+        message: "Account created. Deliver the temporary password securely and ask the partner to change it after first sign-in."
+      });
+    } catch (error) {
+      if (provisioned?.user?.id) removeUser(provisioned.user.id);
+      console.error("Failed to provision partner account:", error.message);
+      sendJson(req, res, 400, { error: error.message || "Unable to provision partner account" });
+    }
     return true;
   }
 
@@ -396,7 +483,7 @@ async function handleProfileRoutes(req, res, url, parseBody, sendJson, pool) {
       email: safe.email,
       phone: safe.phone,
       employeeId: safe.employeeId,
-      role: safe.roleSlug,
+      role: safe.role,
       roleName: safe.roleName,
       status: safe.status,
       lastLoginAt: safe.lastLoginAt,
@@ -577,10 +664,36 @@ async function getRelatedData(userId, roleSlug, pool) {
       WHERE status = 'completed'
         AND updated_at::date = CURRENT_DATE
     `);
+    const activeDriverResult = await pool.query(`
+      SELECT DISTINCT COALESCE(b.assigned_driver_id, a.driver_id) AS driver_id
+      FROM bookings b
+      LEFT JOIN ambulances a ON a.id = b.ambulance_id
+      WHERE b.status IN ('assigned', 'on_route')
+        AND COALESCE(b.assigned_driver_id, a.driver_id) IS NOT NULL
+    `);
+    const activeDriverIds = new Set(
+      activeDriverResult.rows.map(row => Number(row.driver_id)).filter(Number.isInteger)
+    );
     data.dispatcherWorkspace = {
       bookings: dispatchResult.rows.map(bookingWorkspaceFromRow),
-      ambulances: ambulanceResult.rows,
-      drivers: store.driverProfiles.map(enrichDriverForWorkspace),
+      // pg returns BIGINT/foreign-key values as strings in some configurations;
+      // normalize IDs so the frontend can match them with booking IDs.
+      ambulances: ambulanceResult.rows.map(ambulance => ({
+        ...ambulance,
+        id: Number(ambulance.id),
+        ownerId: ambulance.ownerId === null ? null : Number(ambulance.ownerId),
+        driverId: ambulance.driverId === null ? null : Number(ambulance.driverId)
+      })),
+      // An active trip is authoritative over a driver's manually selected
+      // availability status, so the dispatcher never sees an assigned driver
+      // as available.
+      drivers: store.driverProfiles
+        .map(enrichDriverForWorkspace)
+        .filter(Boolean)
+        .map(driver => ({
+          ...driver,
+          availabilityStatus: activeDriverIds.has(Number(driver.id)) ? "busy" : driver.availabilityStatus
+        })),
       completedToday: completedResult.rows[0]?.total || 0
     };
   }

@@ -11,6 +11,10 @@ const BOOKING_FIELDS = [
 ];
 
 const SINGLE_TURN_RESPONSES = {
+  booking_status: {
+    reply: "To see your ambulance status and live tracking, open the My booking section on the main site. It refreshes automatically with the latest update.",
+    nextAction: "open_my_booking"
+  },
   support: {
     reply: "I can help with support. Please describe the issue, and an admin can review it.",
     nextAction: "create_support_log"
@@ -31,6 +35,11 @@ const SINGLE_TURN_RESPONSES = {
 
 function detectIntent(message) {
   const text = String(message || "").toLowerCase();
+
+  if ((text.includes("booking") || text.includes("ambulance")) &&
+      (text.includes("status") || text.includes("track") || text.includes("where"))) {
+    return "booking_status";
+  }
 
   if (text.includes("ambulance") || text.includes("emergency") || text.includes("urgent")) {
     return "emergency_booking";

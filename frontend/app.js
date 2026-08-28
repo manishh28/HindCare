@@ -354,6 +354,19 @@ document.querySelectorAll("[data-close]").forEach(element => {
   });
 });
 
+// Homepage navigation still scrolls to its section, but does not leave
+// implementation-only fragments such as #top or #quick-book in the URL.
+document.querySelectorAll('a[href^="#"]').forEach(link => {
+  link.addEventListener("click", event => {
+    const targetId = link.getAttribute("href").slice(1);
+    const target = document.getElementById(targetId);
+    if (!target) return;
+    event.preventDefault();
+    target.scrollIntoView({ behavior: "smooth", block: "start" });
+    history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+  });
+});
+
 document.addEventListener("keydown", event => {
   if (event.key === "Escape") {
     closePanel("chat-panel");
@@ -378,6 +391,9 @@ window.addEventListener("popstate", event => {
   ["chat-panel", ...Object.keys(PANEL_TARGETS)].forEach(key => {
     closePanel(key, { fromHistory: true });
   });
+  if (window.location.hash === "#chat-panel") {
+    history.replaceState(null, "", "#top");
+  }
 });
 
 // ---- mobile hamburger menu ----

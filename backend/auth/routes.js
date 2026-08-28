@@ -269,6 +269,14 @@ async function handleAuthRoutes(req, res, url, parseBody, sendJson) {
       return true;
     }
 
+    if (body.accessScope === "erp" && roleSlug !== "super_admin") {
+      sendJson(req, res, 403, {
+        error: "Only the Super Admin can sign in to the ERP.",
+        code: "ERP_SUPER_ADMIN_ONLY"
+      });
+      return true;
+    }
+
     if (!user) {
       if (roleSlug === "driver") {
         if (body.loginMethod === "otp") {

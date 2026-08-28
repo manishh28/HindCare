@@ -96,7 +96,31 @@ function screenSignIn(role) {
   if (role === "dispatcher") return commonHeader + dispatcherSignInForm();
   if (role === "hospital_admin") return commonHeader + hospitalAdminSignInForm();
   if (role === "super_admin") return commonHeader + superAdminSignInForm();
-  return screenRoleSelect();
+  return commonHeader + generalSignInForm(role);
+}
+
+function generalSignInForm(role) {
+  return `
+    <div class="md-card animate-in">
+      <form id="signin-form" novalidate>
+        <input type="hidden" name="role" value="${escapeHtml(role)}">
+        <div class="md-field">
+          <label for="identifier">Email or mobile number</label>
+          <input class="md-input" id="identifier" name="identifier" type="text" autocomplete="username" required placeholder="Enter your email or mobile number">
+          <span class="md-field-error" role="alert"></span>
+        </div>
+        <div class="md-field">
+          <label for="password">Password</label>
+          <div class="md-input-wrap">
+            <input class="md-input" id="password" name="password" type="password" autocomplete="current-password" required>
+            <button type="button" class="password-toggle" aria-label="Show password" data-toggle-password="password">👁</button>
+          </div>
+          <span class="md-field-error" role="alert"></span>
+        </div>
+        <div id="form-alert"></div>
+        <button type="submit" class="md-btn md-btn-filled md-btn-block">Sign In</button>
+      </form>
+    </div>`;
 }
 
 function driverSignInForm() {
@@ -203,6 +227,7 @@ function superAdminSignInForm() {
     <div class="md-card animate-in">
       <form id="signin-form" novalidate>
         <input type="hidden" name="role" value="super_admin">
+        <input type="hidden" name="accessScope" value="erp">
         <div class="md-field">
           <label for="email">Enterprise Email</label>
           <input class="md-input" id="email" name="email" type="email" autocomplete="email" required placeholder="admin@hindcare.in">
@@ -312,6 +337,8 @@ function renderScreen() {
   }
 
   let html = "";
+  // The standalone ERP is an admin-only entry point. Patient, hospital,
+  // fleet, driver, and dispatcher accounts sign in through the main site.
   if (route === "/welcome" || route === "/" || route === "/roles") html = screenSignIn("super_admin");
   else if (route.startsWith("/signin")) html = screenSignIn("super_admin");
   else if (route === "/forgot-password") html = screenForgotPassword();

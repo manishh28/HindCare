@@ -230,6 +230,58 @@ function attachProfile(user, profile) {
   markAuthStateDirty();
 }
 
+async function createProvisionedUser({ roleSlug, fullName, email, phone, organizationName, verificationReference, city, address }) {
+  const role = getRoleBySlug(roleSlug);
+  if (!role || !["hospital_admin", "fleet_owner"].includes(roleSlug)) {
+    throw new Error("Only hospital_admin and fleet_owner accounts can be provisioned here.");
+  }
+
+  const normalizedEmail = String(email || "").trim().toLowerCase();
+  const normalizedPhone = normalizePhone(phone);
+  if (findUserByEmail(normalizedEmail) || findUserByPhone(normalizedPhone)) {
+    throw new Error("An account with this email or phone already exists.");
+  }
+
+  const temporaryPassword = `Hc-${crypto.randomBytes(12).toString("base64url")}`;
+  const user = {
+    id: nextUserId++,
+    roleId: role.id,
+    roleSlug,
+    employeeId: null,
+    email: normalizedEmail,
+    phone: normalizedPhone,
+    passwordHash: await hashPassword(temporaryPassword),
+    emailVerified: true,
+    phoneVerified: true,
+    mfaEnabled: roleSlug === "hospital_admin",
+    mfaSecret: null,
+    status: "active",
+    failedLoginAttempts: 0,
+    lockedUntil: null,
+    lastLoginAt: null,
+    passwordChangedAt: new Date().toISOString(),
+    googleId: null,
+    preferredLanguage: "en",
+    theme: "light",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    deletedAt: null
+  };
+  store.users.push(user);
+  attachProfile(user, {
+    fullName: String(fullName).trim().slice(0, 120),
+    adminName: String(fullName).trim().slice(0, 120),
+    companyName: String(organizationName || "").trim().slice(0, 160),
+    city: String(city || "").trim().slice(0, 80),
+    address: String(address || "").trim().slice(0, 250),
+    verificationReference: String(verificationReference || "").trim().slice(0, 100),
+    verificationCompletedAt: new Date().toISOString(),
+    hospitalId: null
+  });
+
+  return { user, temporaryPassword, profile: getProfile(user) };
+}
+
 function getRoleBySlug(slug) {
   return ROLES.find(r => r.slug === slug);
 }
@@ -266,6 +318,19 @@ function findUserByPhone(phone) {
 function findUserByEmployeeId(employeeId) {
   const normalized = String(employeeId || "").trim().toUpperCase();
   return store.users.find(u => u.employeeId === normalized && u.status !== "deleted");
+}
+
+function removeUser(userId) {
+  const collections = [
+    "users", "sessions", "otps", "resetTokens", "auditLogs", "loginHistory",
+    "driverProfiles", "dispatcherProfiles", "hospitalAdminProfiles", "hospitalStaffProfiles",
+    "superAdminProfiles", "customerProfiles", "fleetOwnerProfiles", "addresses",
+    "emergencyContacts", "documents", "driverBankDetails", "notificationPrefs"
+  ];
+  collections.forEach(name => {
+    store[name] = store[name].filter(item => Number(item.id || item.userId) !== Number(userId));
+  });
+  markAuthStateDirty();
 }
 
 function normalizePhone(phone) {
@@ -511,7 +576,10 @@ function getProfile(user) {
 }
 
 function sanitizeUser(user) {
-  const role = ROLES.find(r => r.id === user.roleId);
+  // roleSlug is the persisted identity; roleId remains a compatibility field
+  // for older records and relational links.
+  const role = ROLES.find(r => r.slug === user.roleSlug)
+    || ROLES.find(r => r.id === Number(user.roleId));
   return {
     id: user.id,
     role: role?.slug,
@@ -528,6 +596,100 @@ function sanitizeUser(user) {
     lastLoginAt: user.lastLoginAt,
     permissions: ROLE_PERMISSIONS[role?.slug] || []
   };
+}
+
+function repairRoleAssignments() {
+  const profileRoleMap = new Map();
+  const addProfiles = (collection, roleSlug) => {
+    for (const profile of store[collection] || []) {
+      if (profile.userId != null) profileRoleMap.set(Number(profile.userId), roleSlug);
+    }
+  };
+  addProfiles("driverProfiles", "driver");
+  addProfiles("dispatcherProfiles", "dispatcher");
+  addProfiles("hospitalAdminProfiles", "hospital_admin");
+  addProfiles("superAdminProfiles", "super_admin");
+  addProfiles("customerProfiles", "customer");
+  addProfiles("fleetOwnerProfiles", "fleet_owner");
+  for (const profile of store.hospitalStaffProfiles || []) {
+    const roleSlug = { doctor: "hospital_doctor", reception: "hospital_reception", staff: "hospital_staff" }[
+      String(profile.staffRole || "").trim()
+    ];
+    if (roleSlug && profile.userId != null) profileRoleMap.set(Number(profile.userId), roleSlug);
+  }
+
+  let repaired = 0;
+  for (const user of store.users) {
+    const roleSlug = profileRoleMap.get(Number(user.id));
+    const role = roleSlug && ROLES.find(item => item.slug === roleSlug);
+    if (role && (user.roleSlug !== role.slug || Number(user.roleId) !== role.id)) {
+      user.roleSlug = role.slug;
+      user.roleId = role.id;
+      repaired += 1;
+    }
+  }
+  return repaired;
+}
+
+// Repair snapshots created before the persistent user counter was initialized.
+// JWT subject lookups require every account ID to be unique.
+function repairDuplicateUserIds() {
+  const users = store.users || [];
+  const maxId = users.reduce((max, user) => Math.max(max, Number(user.id) || 0), 0);
+  const counterRaised = nextUserId < maxId + 1;
+  nextUserId = Math.max(nextUserId, maxId + 1);
+  const seen = new Set();
+  const profileCollections = [
+    "driverProfiles", "dispatcherProfiles", "hospitalAdminProfiles",
+    "hospitalStaffProfiles", "superAdminProfiles", "customerProfiles",
+    "fleetOwnerProfiles"
+  ];
+  const userLinkedCollections = [
+    "sessions", "otps", "resetTokens", "auditLogs", "loginHistory",
+    "addresses", "emergencyContacts", "documents", "driverBankDetails",
+    "notificationPrefs", "apiKeys"
+  ];
+  let repaired = 0;
+
+  for (const user of users) {
+    const originalId = Number(user.id);
+    if (!Number.isInteger(originalId) || !seen.has(originalId)) {
+      seen.add(originalId);
+      continue;
+    }
+
+    const replacementId = nextUserId++;
+    user.id = replacementId;
+    const matchingCollections = user.roleSlug === "customer"
+      ? ["customerProfiles"]
+      : user.roleSlug === "driver"
+        ? ["driverProfiles"]
+        : user.roleSlug === "fleet_owner"
+          ? ["fleetOwnerProfiles"]
+          : user.roleSlug === "dispatcher"
+            ? ["dispatcherProfiles"]
+            : user.roleSlug === "hospital_admin"
+              ? ["hospitalAdminProfiles"]
+              : user.roleSlug === "super_admin"
+                ? ["superAdminProfiles"]
+                : ["hospitalStaffProfiles"];
+    for (const collection of matchingCollections) {
+      for (const profile of store[collection] || []) {
+        if (Number(profile.userId) === originalId) profile.userId = replacementId;
+      }
+    }
+
+    const createdAt = new Date(user.createdAt || 0).getTime();
+    for (const collection of userLinkedCollections) {
+      for (const record of store[collection] || []) {
+        if (Number(record.userId) !== originalId) continue;
+        const recordTime = new Date(record.createdAt || record.issuedAt || 0).getTime();
+        if (createdAt && recordTime >= createdAt) record.userId = replacementId;
+      }
+    }
+    repaired += 1;
+  }
+  return repaired + (counterRaised ? 1 : 0);
 }
 
 let seeded = Promise.resolve();
@@ -601,11 +763,14 @@ module.exports = {
   ROLE_PERMISSIONS,
   seeded,
   maybeSeedDemoUsers,
+  snapshotAuthCounters,
+  restoreAuthCounter,
   getRoleBySlug,
   findUserById,
   findUserByEmail,
   findUserByPhone,
   findUserByEmployeeId,
+  removeUser,
   normalizePhone,
   isAccountLocked,
   recordLoginAttempt,
@@ -625,7 +790,10 @@ module.exports = {
   revokeAllSessions,
   getProfile,
   attachProfile,
+  createProvisionedUser,
   sanitizeUser,
+  repairRoleAssignments,
+  repairDuplicateUserIds,
   hashPassword,
   verifyPassword,
   nextUserId: () => nextUserId++,

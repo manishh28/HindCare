@@ -55,6 +55,7 @@ pool.query("SELECT NOW()")
 
 const http = require("http");
 const { handleMessage, emptySession } = require("../chatbot/chatbot");
+const { askGemini } = require("./ai-gemini");
 const { handleAuthRoutes } = require("./auth/routes");
 const { handleProfileRoutes } = require("./profile/routes");
 const { authenticate, requireAuth, getRequestMeta } = require("./auth/middleware");
@@ -65,7 +66,9 @@ const {
   store,
   maybeSeedDemoUsers,
   snapshotAuthCounters,
-  restoreAuthCounter
+  restoreAuthCounter,
+  repairRoleAssignments,
+  repairDuplicateUserIds
 } = require("./auth/store");
 const { initAuthPersistence } = require("./auth/persist");
 
@@ -363,7 +366,42 @@ function isActiveBookingStatus(status) {
   return ["requested", "assigned", "on_route"].includes(status);
 }
 
-  async function createBooking(body, customerId = null) {
+  async function ensureCustomerDatabaseUser(user) {
+    if (!user || user.roleSlug !== "customer") return null;
+    const profile = getProfile(user) || {};
+    const fullName = String(profile.fullName || "Patient").trim().slice(0, 120);
+    const phone = String(user.phone || "").trim();
+    const email = user.email ? String(user.email).trim().toLowerCase() : null;
+
+    const existing = await pool.query(
+      "SELECT id, phone, email, role FROM users WHERE id = $1",
+      [Number(user.id)]
+    );
+    if (existing.rows[0]) {
+      const row = existing.rows[0];
+      const samePhone = String(row.phone || "").replace(/\D/g, "") === phone.replace(/\D/g, "");
+      const sameEmail = !email || String(row.email || "").toLowerCase() === email;
+      return row.role === "patient" && samePhone && sameEmail ? Number(row.id) : null;
+    }
+
+    const inserted = await pool.query(
+      `INSERT INTO users (id, full_name, phone, email, role, password_hash)
+       VALUES ($1, $2, $3, $4, 'patient', $5)
+       ON CONFLICT DO NOTHING
+       RETURNING id`,
+      [Number(user.id), fullName, phone, email, user.passwordHash || null]
+    );
+    if (!inserted.rows[0]) return null;
+
+    // Explicitly using the auth ID keeps JWT subjects, bookings and profiles
+    // aligned. Advance the BIGSERIAL sequence so future inserts stay unique.
+    await pool.query(
+      "SELECT setval(pg_get_serial_sequence('users', 'id'), (SELECT MAX(id) FROM users), true)"
+    );
+    return Number(inserted.rows[0].id);
+  }
+
+  async function createBooking(body, customerId = null, customerUser = null) {
   const missing = requireFields(body, ["patientName", "phone", "pickup"]);
   if (!String(body.destination || "").trim() && !body.hospitalId) missing.push("destination");
   if (missing.length) return { statusCode: 400, error: "Missing required fields", fields: missing };
@@ -436,12 +474,8 @@ function isActiveBookingStatus(status) {
     const status = ambulance ? "assigned" : "requested";
     let dbCustomerId = null;
 
-    if (customerId) {
-      const customerResult = await client.query(
-        "SELECT id FROM users WHERE id = $1",
-        [Number(customerId)]
-      );
-      dbCustomerId = customerResult.rows[0]?.id || null;
+    if (customerId && customerUser) {
+      dbCustomerId = await ensureCustomerDatabaseUser(customerUser);
     }
 
     const bookingResult = await client.query(`
@@ -690,6 +724,8 @@ async function handleApi(req, res) {
   // ----------- Hospitals -----------
   if (req.method === "GET" && url.pathname === "/api/hospitals") {
   const city = url.searchParams.get("city");
+  const auth = authenticate(req);
+  const includeUnapproved = auth?.user.roleSlug === "super_admin";
 
   try {
     const result = await pool.query(
@@ -710,11 +746,11 @@ async function handleApi(req, res) {
           owner_id AS "ownerId",
           departments
         FROM hospitals
-        WHERE status = 'approved'
+        WHERE ($2::boolean OR status = 'approved')
           AND ($1::text IS NULL OR LOWER(city) = LOWER($1))
         ORDER BY id
       `,
-      [city || null]
+      [city || null, includeUnapproved]
     );
 
     sendJson(req, res, 200, result.rows);
@@ -1157,7 +1193,7 @@ if (req.method === "GET" && url.pathname === "/api/bookings") {
     if (isHoneypotTriggered(body)) { sendJson(req, res, 400, { error: "Unable to process request." }); return; }
     const auth = authenticate(req);
     const customerId = auth && auth.user.roleSlug === "customer" ? auth.user.id : null;
-    const result = await createBooking(body, customerId);
+    const result = await createBooking(body, customerId, auth?.user || null);
     if (result.error) { sendJson(req, res, result.statusCode, { error: result.error, fields: result.fields }); return; }
     sendJson(req, res, 201, result.booking);
     return;
@@ -1200,6 +1236,14 @@ try {
     const nextStatus = body.status;
     const hasStatusUpdate = nextStatus !== undefined;
     const hasDispatchUpdate = body.ambulanceId !== undefined || body.assignedDriverId !== undefined;
+
+    if (hasDispatchUpdate) {
+      sendJson(req, res, 409, {
+        error: "Ambulances are assigned automatically to the nearest available vehicle and its fixed driver.",
+        code: "AUTOMATIC_ASSIGNMENT"
+      });
+      return;
+    }
 
     if (!hasStatusUpdate && !hasDispatchUpdate) {
       sendJson(req, res, 400, { error: "Send a status, ambulanceId, or assignedDriverId to update this booking." });
@@ -1274,10 +1318,9 @@ try {
           driverId = body.assignedDriverId === null || body.assignedDriverId === "" ? null : Number(body.assignedDriverId);
           if (driverId !== null) {
             const driverResult = await client.query(
-              `SELECT u.id
-               FROM users u
-               JOIN roles r ON r.id = u.role_id
-               WHERE u.id = $1 AND r.slug = 'driver'`,
+              `SELECT id
+               FROM users
+               WHERE id = $1 AND role = 'driver'`,
               [driverId]
             );
             if (!driverResult.rows[0]) {
@@ -1290,7 +1333,12 @@ try {
           driverId = nextAmbulance.driver_id || null;
         }
 
-        if (nextAmbulance && driverId && nextAmbulance.driver_id && nextAmbulance.driver_id !== driverId) {
+        if (
+          nextAmbulance &&
+          driverId &&
+          nextAmbulance.driver_id &&
+          Number(nextAmbulance.driver_id) !== Number(driverId)
+        ) {
           await client.query("ROLLBACK");
           sendJson(req, res, 400, { error: "Selected driver is not linked to the selected ambulance." });
           return;
@@ -1414,6 +1462,13 @@ try {
       result.reply = hospitals.length ? `${result.reply} ${hospitals.map(h => h.name).join(", ")}.` : `${result.reply} I don't have any hospitals matching "${result.cityQuery}" in the demo data yet.`;
     }
 
+    // Keep structured emergency booking and hospital flows deterministic.
+    // Gemini is used only as a fallback for general/support conversations.
+    if (["unknown", "support", "analytics"].includes(result.intent)) {
+      const aiReply = await askGemini(body.message);
+      if (aiReply) result.reply = aiReply;
+    }
+
     db.chatbotLogs.push({
       id: nextId(db.chatbotLogs), sessionId, message: body.message || "",
       intent: result.intent, reply: result.reply, createdAt: new Date().toISOString()
@@ -1509,7 +1564,9 @@ if (process.env.TLS_KEY_PATH && process.env.TLS_CERT_PATH) {
 // empty account store (which would silently break every login).
 initAuthPersistence(pool, store, {
   snapshot: snapshotAuthCounters,
-  restore: restoreAuthCounter
+  restore: restoreAuthCounter,
+  repairRoles: repairRoleAssignments,
+  repairUserIds: repairDuplicateUserIds
 })
   .catch(error => {
     console.error("[HindCare] Failed to load auth state from PostgreSQL:", error.message);

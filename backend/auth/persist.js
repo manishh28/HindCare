@@ -107,6 +107,8 @@ async function hydrateAuthState() {
         restoredCollections += 1;
       }
     }
+    if (repairUserIds() > 0) dirty = true;
+    if (repairRoles() > 0) dirty = true;
     return restoredCollections;
   } finally {
     client.release();
@@ -119,6 +121,8 @@ async function hydrateAuthState() {
 // what's already live (never lower a counter — ids must stay monotonic).
 let counterSnapshot = () => ({});
 let counterRestore = () => {};
+let repairRoles = () => 0;
+let repairUserIds = () => 0;
 
 async function flushAuthState() {
   if (!dbPool || !authStore || flushing) return;
@@ -168,6 +172,8 @@ async function initAuthPersistence(pool, store, hooks = {}) {
   authStore = store;
   counterSnapshot = typeof hooks.snapshot === "function" ? hooks.snapshot : counterSnapshot;
   counterRestore = typeof hooks.restore === "function" ? hooks.restore : counterRestore;
+  repairRoles = typeof hooks.repairRoles === "function" ? hooks.repairRoles : repairRoles;
+  repairUserIds = typeof hooks.repairUserIds === "function" ? hooks.repairUserIds : repairUserIds;
 
   let restored = 0;
   const client = await pool.connect();
@@ -177,6 +183,9 @@ async function initAuthPersistence(pool, store, hooks = {}) {
     client.release();
   }
   restored = await hydrateAuthState();
+  // Persist startup repairs immediately so a corrected identity map and
+  // monotonic counters survive even if the process stops soon after boot.
+  if (dirty) await flushAuthState();
 
   const interval = setInterval(() => {
     if (dirty) flushAuthState().catch(() => {});

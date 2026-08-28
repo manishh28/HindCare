@@ -133,13 +133,14 @@ function toggleSidebar() {
 }
 
 async function logout() {
+  const erpLogout = data?.user?.role === "super_admin";
   try {
     await profileApi("/api/auth/logout", { method: "POST" });
   } catch {
     // Best-effort — still clear the local session below even if this fails.
   }
   clearProfileAuth();
-  window.location.href = "/";
+  window.location.href = erpLogout ? "/auth/#/welcome" : "/";
 }
 
 // ---------------------------------------------------------------------
@@ -202,10 +203,16 @@ const RENDERERS = {
 async function renderRoute() {
   const match = window.location.hash.match(/^#\/([a-z-]+)/i);
   const routeId = match ? match[1] : "overview";
-  markActiveNav(routeId);
-
   const allowed = [...COMMON_NAV, ...(ROLE_NAV[data.user.role] || [])].map(i => i.id);
-  const renderer = allowed.includes(routeId) ? RENDERERS[routeId] : renderOverview;
+  // Never render a role's overview under another role's URL. This previously
+  // showed dispatcher content with a misleading title such as "My Fleet".
+  const safeRouteId = allowed.includes(routeId) ? routeId : "overview";
+  if (safeRouteId !== routeId) {
+    window.history.replaceState(null, "", "#/overview");
+  }
+  markActiveNav(safeRouteId);
+
+  const renderer = RENDERERS[safeRouteId] || renderOverview;
 
   const el = document.getElementById("profile-content");
   el.innerHTML = '<div class="skeleton" style="height:180px; border-radius:16px;"></div>';
@@ -845,29 +852,6 @@ function renderDispatch(el) {
 
   document.getElementById("dispatch-refresh-btn")?.addEventListener("click", refreshProfileData);
 
-  el.querySelectorAll("[data-dispatch-assign]").forEach(btn => {
-    btn.addEventListener("click", async () => {
-      const card = btn.closest("[data-booking-id]");
-      const bookingId = card.dataset.bookingId;
-      const ambulanceId = card.querySelector("[data-dispatch-ambulance]").value;
-      const assignedDriverId = card.querySelector("[data-dispatch-driver]").value;
-
-      try {
-        await profileApi(`/api/bookings/${bookingId}`, {
-          method: "PATCH",
-          body: JSON.stringify({
-            ambulanceId: ambulanceId ? Number(ambulanceId) : null,
-            assignedDriverId: assignedDriverId ? Number(assignedDriverId) : null
-          })
-        });
-        toast("Trip assignment updated", "success");
-        await refreshProfileData();
-      } catch (err) {
-        toast(err.message, "error");
-      }
-    });
-  });
-
   el.querySelectorAll("[data-dispatch-status]").forEach(btn => {
     btn.addEventListener("click", async () => {
       try {
@@ -901,22 +885,10 @@ function dispatchBookingCard(booking, ambulances, drivers) {
         <div><span>Destination</span><strong>${escapeHtml(booking.destination)}</strong></div>
       </div>
 
-      <div class="dispatch-controls">
-        <label>
-          Ambulance
-          <select class="md-input" data-dispatch-ambulance>
-            <option value="">No ambulance</option>
-            ${ambulances.map(a => `<option value="${a.id}" ${booking.ambulanceId === a.id ? "selected" : ""}>${escapeHtml(a.registrationNumber)} · ${escapeHtml(prettyStatus(a.status))}</option>`).join("")}
-          </select>
-        </label>
-        <label>
-          Driver
-          <select class="md-input" data-dispatch-driver>
-            <option value="">No driver</option>
-            ${drivers.map(d => `<option value="${d.id}" ${booking.assignedDriverId === d.id ? "selected" : ""}>${escapeHtml(d.fullName)} · ${escapeHtml(prettyStatus(d.availabilityStatus))}</option>`).join("")}
-          </select>
-        </label>
-        <button type="button" class="md-btn md-btn-filled" data-dispatch-assign>Assign</button>
+      <div class="dispatch-assignment-summary">
+        <div><span>Ambulance</span><strong>${escapeHtml(booking.ambulance?.registrationNumber || "Finding the nearest ambulance")}</strong></div>
+        <div><span>Driver</span><strong>${escapeHtml(booking.ambulance?.driverName || booking.driver?.fullName || "Assigned with the ambulance")}</strong></div>
+        <small>Automatically matched to the nearest available ambulance and its fixed driver.</small>
       </div>
 
       ${nextStatuses.length ? `
@@ -948,12 +920,28 @@ async function renderAdminUsers(el) {
     <div class="profile-card full-width">
       <div class="profile-card-header"><h2>Users and roles</h2><button type="button" class="md-btn md-btn-outlined" id="admin-users-refresh">Refresh</button></div>
       <div class="profile-card-body">
+        <div class="admin-provision-box">
+          <h3>Provision verified partner</h3>
+          <p class="info-label">Use this only after your team has completed the partner's offline verification and paperwork.</p>
+          <form id="admin-partner-form" class="admin-provision-form">
+            <label>Partner type<select name="role" required><option value="hospital_admin">Hospital</option><option value="fleet_owner">Ambulance fleet</option></select></label>
+            <label>Owner full name<input name="fullName" required autocomplete="name"></label>
+            <label>Organization name<input name="organizationName" required></label>
+            <label>Email<input name="email" type="email" required autocomplete="email"></label>
+            <label>Phone<input name="phone" required autocomplete="tel"></label>
+            <label>Verification reference<input name="verificationReference" placeholder="Internal file or approval reference" required></label>
+            <label>City<input name="city" required autocomplete="address-level2"></label>
+            <label>Address<input name="address" required autocomplete="street-address"></label>
+            <button type="submit" class="md-btn md-btn-filled">Create partner account</button>
+          </form>
+          <p class="form-result" id="admin-partner-result" role="status"></p>
+        </div>
         <p class="info-label" style="margin-bottom:1rem;">Activate, suspend, lock, or change access for every staff and patient account. Your own super admin account is protected.</p>
         <div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>User</th><th>Role</th><th>Status</th><th>Manage</th></tr></thead><tbody>
           ${result.users.length ? result.users.map(user => `
             <tr>
               <td><strong>${escapeHtml(user.fullName)}</strong><small>${escapeHtml(user.email || user.phone || "—")} · ${escapeHtml(user.employeeId || `#${user.id}`)}</small></td>
-              <td><select class="md-input admin-role-select" data-user-role="${user.id}" ${user.role === "super_admin" ? "disabled" : ""}>${roles.map(role => `<option value="${role.slug}" ${role.slug === user.role ? "selected" : ""}>${escapeHtml(role.name)}</option>`).join("")}</select></td>
+              <td><select class="md-input admin-role-select" data-user-role="${user.id}" ${user.role === "super_admin" ? "disabled" : ""}>${(user.role === "super_admin" && !roles.some(role => role.slug === "super_admin") ? [...roles, { slug: "super_admin", name: "Super Admin" }] : roles).map(role => `<option value="${role.slug}" ${role.slug === user.role ? "selected" : ""}>${escapeHtml(role.name)}</option>`).join("")}</select></td>
               <td>${adminStatus(user.status)}</td>
               <td><select class="md-input admin-status-select" data-user-status="${user.id}" ${user.role === "super_admin" ? "disabled" : ""}><option value="active" ${user.status === "active" ? "selected" : ""}>Active</option><option value="suspended" ${user.status === "suspended" ? "selected" : ""}>Suspended</option><option value="locked" ${user.status === "locked" ? "selected" : ""}>Locked</option></select></td>
             </tr>`).join("") : `<tr><td colspan="4"><div class="empty-state-card">No users found.</div></td></tr>`}
@@ -962,6 +950,23 @@ async function renderAdminUsers(el) {
     </div>`;
 
   document.getElementById("admin-users-refresh")?.addEventListener("click", refreshProfileData);
+  document.getElementById("admin-partner-form")?.addEventListener("submit", async event => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const result = document.getElementById("admin-partner-result");
+    result.textContent = "Creating verified partner account…";
+    try {
+      const created = await profileApi("/api/admin/partner-accounts", {
+        method: "POST",
+        body: JSON.stringify(Object.fromEntries(new FormData(form)))
+      });
+      result.innerHTML = `Account created for <strong>${escapeHtml(created.user.fullName || created.user.email)}</strong>. Temporary password: <code>${escapeHtml(created.temporaryPassword)}</code>. Deliver it securely, then ask the partner to change it after first sign-in.`;
+      form.reset();
+      await refreshProfileData();
+    } catch (error) {
+      result.textContent = error.message;
+    }
+  });
   el.querySelectorAll("[data-user-role], [data-user-status]").forEach(select => {
     select.addEventListener("change", async () => {
       const userId = select.dataset.userRole || select.dataset.userStatus;

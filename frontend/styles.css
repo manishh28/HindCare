@@ -1691,18 +1691,27 @@ body.feature-view-open .overlay-backdrop > .modal-panel > .panel-close {
 
 body.feature-view-open .chat-panel {
   position: fixed;
-  inset: 0;
+  top: 76px;
+  right: 0;
+  bottom: 0;
+  left: 0;
   width: 100%;
   max-height: none;
   border-radius: 0;
-  box-shadow: none;
-  z-index: 70;
+  border-top: 1px solid var(--line);
+  box-shadow: 0 -8px 24px rgba(12, 28, 44, 0.08);
+  z-index: 10;
 }
 
 body.feature-view-open .chat-panel-body {
   width: min(100%, 860px);
+  padding: 22px clamp(18px, 5vw, 48px) 28px;
   margin: 0 auto;
   flex: 1;
+}
+
+body.feature-view-open .chat-panel-header {
+  padding: 14px clamp(18px, 5vw, 48px);
 }
 
 .legal-list {
@@ -2108,6 +2117,12 @@ body.feature-view-open .chat-panel-body {
   .chat-panel {
     bottom: 92px;
     max-height: 60vh;
+  }
+
+  body.feature-view-open .chat-panel {
+    top: 68px;
+    bottom: 0;
+    max-height: none;
   }
 
   .modal-panel {

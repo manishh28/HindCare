@@ -402,9 +402,9 @@
     </div>
 
     <!-- ============ ASSISTANT (floating panel) ============ -->
-    <div class="chat-panel hidden" id="chat-panel">
+    <div class="chat-panel hidden" id="chat-panel" role="dialog" aria-modal="true" aria-labelledby="chat-panel-title">
       <div class="chat-panel-header">
-        <span>HindCare assistant</span>
+        <span id="chat-panel-title">HindCare assistant</span>
         <button type="button" class="panel-close" data-close="chat-panel" aria-label="Close assistant">&times;</button>
       </div>
       <div class="chat-panel-body">
