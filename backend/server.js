@@ -440,6 +440,7 @@ function isActiveBookingStatus(status) {
       SELECT id, current_lat, current_lng, driver_id
       FROM ambulances
       WHERE status = 'available'
+        AND driver_id IS NOT NULL
       ORDER BY id
       FOR UPDATE
     `);

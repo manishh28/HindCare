@@ -5,6 +5,7 @@ const {
   getRoleBySlug,
   getProfile,
   attachProfile,
+  createResetToken,
   createProvisionedUser,
   removeUser,
   hashPassword,
@@ -19,6 +20,7 @@ const {
 } = require("../auth/store");
 
 const { requireAuth, auditAction, validateEmail, validatePhone, validatePassword } = require("../auth/middleware");
+const { deliverSecurityCode } = require("../auth/notifications");
 
 function hasValidRasterSignature(dataUri) {
   const match = String(dataUri || "").match(/^data:image\/(png|jpeg|webp|gif);base64,([A-Za-z0-9+/=]+)$/);
@@ -396,6 +398,8 @@ async function handleProfileRoutes(req, res, url, parseBody, sendJson, pool) {
     let provisioned;
     try {
       provisioned = await createProvisionedUser({ roleSlug, fullName, email, phone, organizationName, verificationReference, city, address });
+      const setupToken = createResetToken(provisioned.user.id);
+      deliverSecurityCode(email, "partner account setup", setupToken._plainToken);
 
       let hospital = null;
       if (roleSlug === "hospital_admin") {
@@ -426,8 +430,7 @@ async function handleProfileRoutes(req, res, url, parseBody, sendJson, pool) {
         user: sanitizeUser(provisioned.user),
         profile: provisioned.profile,
         hospitalId: hospital ? Number(hospital.id) : null,
-        temporaryPassword: provisioned.temporaryPassword,
-        message: "Account created. Deliver the temporary password securely and ask the partner to change it after first sign-in."
+        message: "Account created. A one-time setup code was sent to the partner's email address."
       });
     } catch (error) {
       if (provisioned?.user?.id) removeUser(provisioned.user.id);

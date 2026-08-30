@@ -960,7 +960,7 @@ async function renderAdminUsers(el) {
         method: "POST",
         body: JSON.stringify(Object.fromEntries(new FormData(form)))
       });
-      result.innerHTML = `Account created for <strong>${escapeHtml(created.user.fullName || created.user.email)}</strong>. Temporary password: <code>${escapeHtml(created.temporaryPassword)}</code>. Deliver it securely, then ask the partner to change it after first sign-in.`;
+      result.textContent = `Account created for ${created.user.fullName || created.user.email}. A one-time setup code was sent to the partner's email address.`;
       form.reset();
       await refreshProfileData();
     } catch (error) {

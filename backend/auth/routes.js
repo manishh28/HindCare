@@ -42,6 +42,8 @@ const {
   passwordStrength
 } = require("./middleware");
 
+const { deliverSecurityCode } = require("./notifications");
+
 const { passwordStrength: calcStrength } = require("./crypto");
 
 // Rate limiting (in-memory, per IP)
@@ -82,20 +84,6 @@ function checkRateLimit(key) {
     }
   }
   return entry.count <= RATE_LIMIT_MAX;
-}
-
-// Delivers a one-time code (MFA, phone/email verification, password reset)
-// out-of-band — i.e. NEVER in the HTTP response. In development this logs to
-// the server console, which only someone with actual access to the running
-// server can read. Before any real deployment, replace this with a genuine
-// email/SMS provider call — do not reintroduce the code into an API response.
-function deliverSecurityCode(destination, purpose, code) {
-  if (process.env.NODE_ENV === "production") {
-    // TODO: wire up a real email/SMS provider here before production use.
-    console.log(`[HindCare] Security code generated for ${purpose} (delivery channel not yet configured).`);
-    return;
-  }
-  console.log(`[HindCare][dev-only, never sent over the network] ${purpose} code for ${destination}: ${code}`);
 }
 
 async function handleAuthRoutes(req, res, url, parseBody, sendJson) {
@@ -227,7 +215,6 @@ async function handleAuthRoutes(req, res, url, parseBody, sendJson) {
 
     setAuthCookies(res, tokens.accessToken, session._plainRefreshToken);
     sendJson(req, res, 201, {
-      ...tokens,
       user: sanitizeUser(user),
       profile: sanitizeProfile(getProfile(user), user.roleSlug)
     });
@@ -381,7 +368,6 @@ async function handleAuthRoutes(req, res, url, parseBody, sendJson) {
 
     setAuthCookies(res, tokens.accessToken, session._plainRefreshToken);
     sendJson(req, res, 200, {
-      ...tokens,
       user: sanitizeUser(user),
       profile: sanitizeProfile(profile, user.roleSlug),
       redirectTo: redirectMap[user.roleSlug] || "/"
@@ -627,10 +613,7 @@ async function handleAuthRoutes(req, res, url, parseBody, sendJson) {
     const newRefreshToken = rotateSessionRefreshToken(session);
     const tokens = issueTokens(user, session.id);
     setAuthCookies(res, tokens.accessToken, newRefreshToken);
-    // Keep returning refreshToken in the JSON body: cookie-less API clients
-    // and the existing web clients persist it for the next rotation. The
-    // HttpOnly cookie stays as defense-in-depth on top of this.
-    sendJson(req, res, 200, { ...tokens, refreshToken: newRefreshToken });
+    sendJson(req, res, 200, { message: "Session refreshed" });
     return true;
   }
 
