@@ -30,10 +30,9 @@ function rowSql(facility) {
 
 const upsertTail = `
 ON CONFLICT (external_place_id) DO UPDATE SET
-  source_pin_codes = CASE
   source_pin_codes = ARRAY(
-    SELECT DISTINCT pin
-    FROM unnest(facility_directory.source_pin_codes || EXCLUDED.source_pin_codes) AS pin
+    SELECT DISTINCT source_pin
+    FROM unnest(facility_directory.source_pin_codes || EXCLUDED.source_pin_codes) AS pins(source_pin)
   ),
   resolved_pin_code = EXCLUDED.resolved_pin_code,
   pin_confidence = EXCLUDED.pin_confidence,
