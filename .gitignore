@@ -14,6 +14,7 @@ database/*.sqlite
 database/*.sqlite3
 uploads/
 exports/
+facility-directory-import.sql
 strix-scan/
 strix_runs/
 .DS_Store

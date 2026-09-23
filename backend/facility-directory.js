@@ -11,11 +11,16 @@ function validCoordinate(value, min, max) {
 }
 
 function normalizeFacilityType(record) {
-  const labels = [record.type, ...(Array.isArray(record.types) ? record.types : [])]
+  const primaryType = String(record.type || "").toLowerCase();
+  if (/(pharmacy|medical store|diagnostic|pathology|laboratory|\blab\b)/.test(primaryType)) return "other";
+  if (/(hospital|nursing home)/.test(primaryType)) return "hospital";
+  if (/clinic/.test(primaryType)) return "clinic";
+
+  const labels = (Array.isArray(record.types) ? record.types : [])
     .filter(Boolean)
     .join(" ")
     .toLowerCase();
-  if (/(hospital|nursing home|medical centre|medical center)/.test(labels)) return "hospital";
+  if (/(hospital|nursing home)/.test(labels)) return "hospital";
   if (/clinic/.test(labels)) return "clinic";
   return "other";
 }

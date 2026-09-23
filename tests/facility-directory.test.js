@@ -25,6 +25,17 @@ test("falls back to the source PIN when an address has no PIN", () => {
   assert.equal(facility.pinConfidence, "source");
 });
 
+test("does not publish medical stores as hospitals", () => {
+  const facility = normalizeFacility("226001", {
+    ...baseRecord,
+    title: "Example Medical Store",
+    type: "Medical store",
+    types: ["Medical center", "Pharmacy", "Clinic"]
+  });
+
+  assert.equal(facility.facilityType, "other");
+});
+
 test("rejects incomplete external records", () => {
   assert.equal(normalizeFacility("226001", { ...baseRecord, place_id: "" }), null);
   assert.equal(normalizeFacility("226001", { ...baseRecord, gps_coordinates: { latitude: 99, longitude: 80.95 } }), null);
