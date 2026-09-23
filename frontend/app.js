@@ -17,6 +17,8 @@ const state = {
   destinationManuallySet: false
 };
 
+let facilityLeafletMap = null;
+
 const chatSessionId =
   window.crypto && window.crypto.randomUUID
     ? window.crypto.randomUUID()
@@ -65,6 +67,85 @@ async function api(path, options = {}) {
 function formToObject(form) {
   return Object.fromEntries(new FormData(form).entries());
 }
+
+// ---------------------------------------------------------------------
+// Facility directory (external, unverified discovery listings only)
+// ---------------------------------------------------------------------
+
+function facilityTypeLabel(type) {
+  return type === "hospital" ? "Hospital" : "Clinic";
+}
+
+function renderFacilityMap(facilities) {
+  const container = document.getElementById("facility-map");
+  if (!container || !window.L) return;
+  if (facilityLeafletMap) facilityLeafletMap.remove();
+  facilityLeafletMap = L.map(container, { zoomControl: true, scrollWheelZoom: false });
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution: "© OpenStreetMap contributors"
+  }).addTo(facilityLeafletMap);
+
+  const points = facilities.map(facility => [facility.latitude, facility.longitude]);
+  points.forEach((point, index) => {
+    const facility = facilities[index];
+    L.marker(point).addTo(facilityLeafletMap)
+      .bindTooltip(escapeHtml(facility.name), { direction: "top" });
+  });
+  if (points.length === 1) facilityLeafletMap.setView(points[0], 15);
+  else if (points.length) facilityLeafletMap.fitBounds(points, { padding: [28, 28], maxZoom: 14 });
+  else facilityLeafletMap.setView([26.8467, 80.9462], 11);
+}
+
+function renderFacilities(facilities, totalItems) {
+  const list = document.getElementById("facility-list");
+  if (!list) return;
+  if (!facilities.length) {
+    list.innerHTML = '<p class="empty-note">No hospital or clinic listings match this search.</p>';
+    renderFacilityMap([]);
+    return;
+  }
+  list.innerHTML = facilities.map(facility => `
+    <article class="facility-card">
+      <div class="item-header">
+        <strong>${escapeHtml(facility.name)}</strong>
+        <span class="facility-unverified">Unverified</span>
+      </div>
+      <p class="facility-kind">${facilityTypeLabel(facility.type)} · PIN ${escapeHtml(facility.pinCode)}</p>
+      <p>${escapeHtml(facility.address)}</p>
+      ${facility.phone ? `<a class="facility-contact" href="tel:${encodeURIComponent(facility.phone)}">${escapeHtml(facility.phone)}</a>` : ""}
+      ${facility.website ? `<a class="facility-contact" href="${escapeHtml(facility.website)}" target="_blank" rel="noopener noreferrer">Visit website</a>` : ""}
+    </article>
+  `).join("");
+  document.getElementById("facility-search-status").textContent = `${totalItems} matching ${totalItems === 1 ? "listing" : "listings"}.`;
+  renderFacilityMap(facilities);
+}
+
+async function searchFacilities(form) {
+  const pinCode = document.getElementById("facility-pin-code").value.trim();
+  const type = new FormData(form).get("facilityType");
+  const status = document.getElementById("facility-search-status");
+  if (pinCode && !/^\d{6}$/.test(pinCode)) {
+    status.textContent = "Enter a six-digit PIN code.";
+    return;
+  }
+  status.textContent = "Searching directory…";
+  const params = new URLSearchParams({ pageSize: "50" });
+  if (pinCode) params.set("pinCode", pinCode);
+  if (type) params.set("type", type);
+  try {
+    const result = await api(`/api/facilities?${params}`);
+    renderFacilities(result.data, result.pagination.totalItems);
+  } catch (error) {
+    document.getElementById("facility-list").innerHTML = `<p class="load-error">${escapeHtml(error.message)}</p>`;
+    status.textContent = "Directory search could not be completed.";
+  }
+}
+
+document.getElementById("facility-search-form")?.addEventListener("submit", event => {
+  event.preventDefault();
+  searchFacilities(event.currentTarget);
+});
 
 // ---------------------------------------------------------------------
 // Hospitals

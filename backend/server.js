@@ -659,6 +659,69 @@ async function handleApi(req, res) {
     return;
   }
 
+  // External directory listings are discovery-only. They are never returned
+  // by /api/hospitals and cannot be selected as booking destinations.
+  if (req.method === "GET" && url.pathname === "/api/facilities") {
+    const pinCode = url.searchParams.get("pinCode");
+    const facilityType = url.searchParams.get("type");
+    const page = Number(url.searchParams.get("page") || "1");
+    const pageSize = Number(url.searchParams.get("pageSize") || "20");
+
+    if (pinCode !== null && !/^\d{6}$/.test(pinCode)) {
+      sendJson(req, res, 400, { error: "pinCode must be a six-digit PIN code." });
+      return;
+    }
+    if (facilityType !== null && !["hospital", "clinic"].includes(facilityType)) {
+      sendJson(req, res, 400, { error: "type must be hospital or clinic." });
+      return;
+    }
+    if (!Number.isInteger(page) || page < 1 || !Number.isInteger(pageSize) || pageSize < 1 || pageSize > 50) {
+      sendJson(req, res, 400, { error: "page must be positive and pageSize must be between 1 and 50." });
+      return;
+    }
+
+    try {
+      const types = facilityType ? [facilityType] : ["hospital", "clinic"];
+      const countResult = await pool.query(
+        `SELECT COUNT(*)::int AS total
+         FROM facility_directory
+         WHERE ($1::text IS NULL OR resolved_pin_code = $1)
+           AND facility_type = ANY($2::text[])`,
+        [pinCode, types]
+      );
+      const totalItems = countResult.rows[0].total;
+      const result = await pool.query(
+        `SELECT id, name, facility_type AS "type", address,
+                resolved_pin_code AS "pinCode", pin_confidence AS "pinConfidence",
+                latitude, longitude, phone, website,
+                verification_status AS "verificationStatus"
+         FROM facility_directory
+         WHERE ($1::text IS NULL OR resolved_pin_code = $1)
+           AND facility_type = ANY($2::text[])
+         ORDER BY name ASC
+         LIMIT $3 OFFSET $4`,
+        [pinCode, types, pageSize, (page - 1) * pageSize]
+      );
+      sendJson(req, res, 200, {
+        data: result.rows.map(row => ({
+          ...row,
+          id: Number(row.id),
+          latitude: Number(row.latitude),
+          longitude: Number(row.longitude)
+        })),
+        pagination: { page, pageSize, totalItems, totalPages: Math.ceil(totalItems / pageSize) }
+      });
+    } catch (error) {
+      if (error.code === "42P01") {
+        sendJson(req, res, 503, { error: "The facility directory is being prepared. Please try again shortly." });
+        return;
+      }
+      console.error("Failed to load facility directory:", error.message);
+      sendJson(req, res, 500, { error: "Unable to load the facility directory." });
+    }
+    return;
+  }
+
   // ----------- Production auth & profile modules -----------
   if (await handleAuthRoutes(req, res, url, parseBody, sendJson)) return;
   if (await handleProfileRoutes(req, res, url, parseBody, sendJson, pool)) return;

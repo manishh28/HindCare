@@ -1,0 +1,31 @@
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const { normalizeFacility } = require("../backend/facility-directory");
+
+const baseRecord = {
+  place_id: "place-123",
+  title: "Example Hospital",
+  type: "Private hospital",
+  address: "Example Road, Lucknow, Uttar Pradesh 226002, India",
+  gps_coordinates: { latitude: 26.85, longitude: 80.95 }
+};
+
+test("uses an address PIN instead of the source filename PIN", () => {
+  const facility = normalizeFacility("226001", baseRecord);
+
+  assert.equal(facility.resolvedPinCode, "226002");
+  assert.equal(facility.pinConfidence, "address");
+  assert.equal(facility.facilityType, "hospital");
+});
+
+test("falls back to the source PIN when an address has no PIN", () => {
+  const facility = normalizeFacility("226001", { ...baseRecord, address: "Example Road, Lucknow" });
+
+  assert.equal(facility.resolvedPinCode, "226001");
+  assert.equal(facility.pinConfidence, "source");
+});
+
+test("rejects incomplete external records", () => {
+  assert.equal(normalizeFacility("226001", { ...baseRecord, place_id: "" }), null);
+  assert.equal(normalizeFacility("226001", { ...baseRecord, gps_coordinates: { latitude: 99, longitude: 80.95 } }), null);
+});

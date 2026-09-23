@@ -830,6 +830,100 @@ select:focus {
   display: none;
 }
 
+/* ---- facility directory ---- */
+.facility-search-form {
+  margin-top: 24px;
+  display: grid;
+  grid-template-columns: minmax(0, 220px) minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 14px;
+}
+
+.facility-type-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  border: 0;
+  padding: 0;
+}
+
+.facility-type-picker legend {
+  width: 100%;
+  margin-bottom: 7px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.facility-search-status {
+  min-height: 22px;
+  margin-top: 14px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.facility-directory-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 0.85fr) minmax(320px, 1.15fr);
+  gap: 18px;
+  margin-top: 8px;
+}
+
+.facility-list {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.facility-card {
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.facility-card p {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.facility-kind {
+  font-family: var(--font-mono);
+  font-size: 12px !important;
+}
+
+.facility-unverified {
+  flex: 0 0 auto;
+  padding: 4px 8px;
+  border: 1px solid var(--amber);
+  border-radius: 999px;
+  color: #795305;
+  background: #fff8e6;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.facility-contact {
+  display: block;
+  width: fit-content;
+  margin-top: 8px;
+  color: var(--teal-dark);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.facility-map {
+  min-height: 430px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--surface-soft);
+}
+
 /* ---- network section ---- */
 .network-grid {
   margin-top: 26px;
@@ -2050,6 +2144,15 @@ body.feature-view-open .chat-panel-header {
 
 /* ---- responsive ---- */
 @media (max-width: 900px) {
+  .facility-search-form,
+  .facility-directory-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .facility-search-form .cta-primary {
+    width: 100%;
+  }
+
   .hero {
     grid-template-columns: 1fr;
     padding-top: 40px;

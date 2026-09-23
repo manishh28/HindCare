@@ -22,6 +22,7 @@
       </a>
       <nav class="topbar-nav">
         <a href="#quick-book">Book ambulance</a>
+        <a href="#facility-directory">Find care</a>
         <button type="button" data-open="my-booking-panel">My booking</button>
         <button type="button" data-open="network-panel">Network</button>
         <button type="button" data-open="partner-panel">Partner with us</button>
@@ -37,6 +38,7 @@
         <a href="#quick-book" class="mobile-nav-primary" data-mobile-nav-item>
           <span aria-hidden="true">&#128657;</span> Book an ambulance
         </a>
+        <a href="#facility-directory" data-mobile-nav-item>Find care</a>
         <button type="button" data-open="my-booking-panel" data-mobile-nav-item>My booking</button>
         <button type="button" data-open="network-panel" data-mobile-nav-item>Network</button>
         <button type="button" data-open="partner-panel" data-mobile-nav-item>Partner with us</button>
@@ -282,6 +284,38 @@
           <button type="submit" class="cta-primary cta-block">Book Ambulance Now</button>
         </form>
         <p class="form-result hidden" id="booking-result" role="status"></p>
+      </section>
+
+      <div class="pulse-divider" aria-hidden="true">
+        <svg viewBox="0 0 1200 40" preserveAspectRatio="none">
+          <path class="pulse-line" d="M0,20 L370,20 L384,14 L396,20 L420,20 L428,26 L438,2 L448,36 L460,20 L480,20 L490,12 L500,20 L1200,20" />
+        </svg>
+      </div>
+
+      <!-- ============ FACILITY DIRECTORY ============ -->
+      <section class="panel-shell facility-directory" id="facility-directory" aria-labelledby="facility-directory-title">
+        <p class="eyebrow">[ LUCKNOW HEALTHCARE DIRECTORY ]</p>
+        <h2 id="facility-directory-title">Find a hospital or clinic nearby</h2>
+        <p class="section-sub">Search location listings by PIN code. Directory entries are not verified HindCare partners and cannot be booked through this page.</p>
+
+        <form id="facility-search-form" class="facility-search-form">
+          <label>
+            PIN code
+            <input id="facility-pin-code" name="pinCode" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="226001" autocomplete="postal-code">
+          </label>
+          <fieldset class="facility-type-picker">
+            <legend>Facility type</legend>
+            <label class="pill"><input type="radio" name="facilityType" value="" checked><span>Hospitals and clinics</span></label>
+            <label class="pill"><input type="radio" name="facilityType" value="hospital"><span>Hospitals</span></label>
+            <label class="pill"><input type="radio" name="facilityType" value="clinic"><span>Clinics</span></label>
+          </fieldset>
+          <button class="cta-primary" type="submit">Search directory</button>
+        </form>
+        <p id="facility-search-status" class="facility-search-status" role="status" aria-live="polite">Enter a Lucknow PIN code to search the directory.</p>
+        <div class="facility-directory-layout">
+          <div id="facility-list" class="facility-list" aria-live="polite"></div>
+          <div id="facility-map" class="facility-map" role="img" aria-label="Map of healthcare facilities matching the search"></div>
+        </div>
       </section>
 
       <div class="pulse-divider" aria-hidden="true">
