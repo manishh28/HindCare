@@ -685,7 +685,7 @@ async function handleApi(req, res) {
       const countResult = await pool.query(
         `SELECT COUNT(*)::int AS total
          FROM facility_directory
-         WHERE ($1::text IS NULL OR resolved_pin_code = $1)
+         WHERE ($1::text IS NULL OR resolved_pin_code = $1 OR $1 = ANY(source_pin_codes))
            AND facility_type = ANY($2::text[])`,
         [pinCode, types]
       );
@@ -696,7 +696,7 @@ async function handleApi(req, res) {
                 latitude, longitude, phone, website,
                 verification_status AS "verificationStatus"
          FROM facility_directory
-         WHERE ($1::text IS NULL OR resolved_pin_code = $1)
+         WHERE ($1::text IS NULL OR resolved_pin_code = $1 OR $1 = ANY(source_pin_codes))
            AND facility_type = ANY($2::text[])
          ORDER BY name ASC
          LIMIT $3 OFFSET $4`,
