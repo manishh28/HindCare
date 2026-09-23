@@ -1,6 +1,6 @@
 const fs = require("fs");
 const path = require("path");
-const { normalizeFacility } = require("../backend/facility-directory");
+const { normalizeFacility, mergeFacilities } = require("../backend/facility-directory");
 
 const [sourceDirectory, outputFile] = process.argv.slice(2);
 if (!sourceDirectory || !outputFile) {
@@ -15,7 +15,7 @@ function sqlText(value) {
 function rowSql(facility) {
   return `(${[
     sqlText(facility.externalPlaceId),
-    `ARRAY[${sqlText(facility.sourcePinCode)}]`,
+    `ARRAY[${facility.sourcePinCodes.map(sqlText).join(", ")}]`,
     sqlText(facility.resolvedPinCode),
     sqlText(facility.pinConfidence),
     sqlText(facility.name),
@@ -31,10 +31,10 @@ function rowSql(facility) {
 const upsertTail = `
 ON CONFLICT (external_place_id) DO UPDATE SET
   source_pin_codes = CASE
-    WHEN EXCLUDED.source_pin_codes[1] = ANY(facility_directory.source_pin_codes)
-      THEN facility_directory.source_pin_codes
-    ELSE array_append(facility_directory.source_pin_codes, EXCLUDED.source_pin_codes[1])
-  END,
+  source_pin_codes = ARRAY(
+    SELECT DISTINCT pin
+    FROM unnest(facility_directory.source_pin_codes || EXCLUDED.source_pin_codes) AS pin
+  ),
   resolved_pin_code = EXCLUDED.resolved_pin_code,
   pin_confidence = EXCLUDED.pin_confidence,
   name = EXCLUDED.name,
@@ -47,7 +47,7 @@ ON CONFLICT (external_place_id) DO UPDATE SET
   imported_at = CURRENT_TIMESTAMP;`;
 
 const files = fs.readdirSync(sourceDirectory).filter(file => /^\d{6}\.json$/.test(file)).sort();
-const rows = [];
+const facilities = [];
 let skipped = 0;
 for (const file of files) {
   const sourcePinCode = path.basename(file, ".json");
@@ -55,11 +55,12 @@ for (const file of files) {
   if (!Array.isArray(records)) throw new Error(`${file} must contain a JSON array.`);
   for (const record of records) {
     const facility = normalizeFacility(sourcePinCode, record || {});
-    if (facility) rows.push(rowSql(facility));
+    if (facility) facilities.push(facility);
     else skipped += 1;
   }
 }
 
+const rows = mergeFacilities(facilities).map(rowSql);
 const statements = ["BEGIN;"];
 for (let index = 0; index < rows.length; index += 250) {
   statements.push(`INSERT INTO facility_directory (
@@ -69,4 +70,4 @@ for (let index = 0; index < rows.length; index += 250) {
 }
 statements.push("COMMIT;");
 fs.writeFileSync(outputFile, `${statements.join("\n\n")}\n`, "utf8");
-console.log(`Created ${outputFile} with ${rows.length} listings; skipped ${skipped} incomplete records.`);
+console.log(`Created ${outputFile} with ${rows.length} unique listings from ${facilities.length} source records; skipped ${skipped} incomplete records.`);

@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { normalizeFacility } = require("../backend/facility-directory");
+const { normalizeFacility, mergeFacilities } = require("../backend/facility-directory");
 
 const baseRecord = {
   place_id: "place-123",
@@ -34,6 +34,18 @@ test("does not publish medical stores as hospitals", () => {
   });
 
   assert.equal(facility.facilityType, "other");
+});
+
+test("merges duplicate place IDs and retains every source PIN", () => {
+  const merged = mergeFacilities([
+    normalizeFacility("226001", { ...baseRecord, address: "Example Road, Lucknow" }),
+    normalizeFacility("226002", baseRecord)
+  ]);
+
+  assert.equal(merged.length, 1);
+  assert.deepEqual(merged[0].sourcePinCodes, ["226001", "226002"]);
+  assert.equal(merged[0].resolvedPinCode, "226002");
+  assert.equal(merged[0].pinConfidence, "address");
 });
 
 test("rejects incomplete external records", () => {

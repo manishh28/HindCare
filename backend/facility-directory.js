@@ -62,4 +62,20 @@ function normalizeFacility(sourcePinCode, record) {
   };
 }
 
-module.exports = { normalizeFacility };
+function mergeFacilities(facilities) {
+  const merged = new Map();
+  for (const facility of facilities) {
+    const existing = merged.get(facility.externalPlaceId);
+    if (!existing) {
+      merged.set(facility.externalPlaceId, { ...facility, sourcePinCodes: [facility.sourcePinCode] });
+      continue;
+    }
+    const sourcePinCodes = new Set(existing.sourcePinCodes);
+    sourcePinCodes.add(facility.sourcePinCode);
+    const preferred = existing.pinConfidence === "source" && facility.pinConfidence === "address" ? facility : existing;
+    merged.set(facility.externalPlaceId, { ...preferred, sourcePinCodes: [...sourcePinCodes] });
+  }
+  return [...merged.values()];
+}
+
+module.exports = { normalizeFacility, mergeFacilities };
