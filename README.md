@@ -48,6 +48,7 @@ The app is split into three entry points:
 - Multi-role sign-up: Patient, Hospital, Ambulance fleet, Driver
 - Hospital and fleet partner onboarding
 - Hospital directory, fleet status, booking board
+- **Find Care directory** — search imported hospitals and clinics by PIN code, type, and map location
 - Stateful chatbot for booking and hospital search
 - Mobile navigation and expanded site footer
 
@@ -86,6 +87,27 @@ The app is split into three entry points:
 - Node.js built-in HTTP server plus `pg` (PostgreSQL) and `dotenv`
 - PostgreSQL for bookings, hospitals, ambulances, and durable auth state (`app_auth_state`); in-memory working set hydrated at startup
 - SQL schemas and seed data in `database/`
+
+## Facility directory
+
+The public **Find Care** section is an external discovery directory for hospitals and clinics in Lucknow. It is intentionally separate from HindCare's approved hospital-partner registry:
+
+- Listings are labelled **Unverified** and cannot be selected as ambulance-booking destinations.
+- Search accepts a six-digit PIN and shows hospitals and clinics on a map.
+- Search matches both the actual PIN extracted from a listing address and the source dataset PIN. This preserves results when an external source file contains nearby facilities with a different address PIN.
+- Pharmacies, medical stores, labs, and diagnostic centres are excluded from public care search results.
+
+To enable it on a database, run the migration and then import the approved JSON dataset:
+
+```powershell
+# Run this in the PostgreSQL/Supabase SQL editor first.
+# database/migrations/004_facility_directory.sql
+
+# Generate a SQL import file from a directory of six-digit-PIN JSON files.
+node scripts/export-facility-directory-sql.js "C:\path\to\facility-json" facility-directory-import.sql
+```
+
+Run the generated `facility-directory-import.sql` in the PostgreSQL/Supabase SQL editor. The generated file is intentionally ignored by Git because it is local import output. The importer deduplicates listings by external place ID and preserves every source PIN associated with a listing.
 
 ## Run locally
 
@@ -165,8 +187,12 @@ chatbot/              Chatbot intent, session, and response logic
 database/
   schema.sql          Core booking/hospital/ambulance schema
   auth-schema.sql     Users, roles, profiles, sessions (PostgreSQL)
+  migrations/004_facility_directory.sql  External discovery directory schema
   seed.sql            Fictional hospital/ambulance seed data
   auth-seed.sql       Demo staff accounts (only used with ENABLE_DEMO_ACCOUNTS)
+scripts/
+  export-facility-directory-sql.js  Build a Supabase/PostgreSQL import file from PIN JSON data
+  import-facility-directory.js      Direct database importer for trusted local connections
 docs/                 Project and technical documentation
 frontend/
   index.html          Public booking site + account panel
@@ -184,6 +210,7 @@ frontend/
 | --- | --- | --- | --- |
 | `GET` | `/api/health` | — | Server health check |
 | `GET` | `/api/hospitals` | — | List hospitals |
+| `GET` | `/api/facilities` | — | Search unverified external hospital/clinic listings by `pinCode` and optional `type` |
 | `POST` | `/api/hospitals` | — | Submit hospital (starts as `pending`; honeypot protected) |
 | `PATCH` | `/api/hospitals/:id` | JWT | Approve/reject (super admin), manage own hospital (hospital admin), or update beds (hospital reception) |
 | `GET` | `/api/ambulances` | — | List ambulances (driver contact redacted for public) |
@@ -251,6 +278,8 @@ See [`docs/api-docs.md`](docs/api-docs.md) for request and response examples.
 
 Bookings, hospitals, and ambulances live in PostgreSQL. Auth state (users, sessions, OTPs, reset tokens, audit logs, login history) is hydrated from the `app_auth_state` table at startup and flushed back on a short debounce, a periodic sweep, and shutdown — restarts no longer wipe accounts or sessions. Plaintext secrets (refresh tokens, OTPs, reset tokens) are hashed at rest and stripped from persisted snapshots.
 
+External facility listings live in the separate `facility_directory` table. They do not grant partner access, affect emergency routing, or appear in `/api/hospitals` until a real HindCare verification/onboarding process creates an approved partner record.
+
 - Store secrets in a local `.env` file — never commit it. See `backend/.env.example`.
 - Demo staff accounts are only seeded with `ENABLE_DEMO_ACCOUNTS=true` on non-production runs — never enable it on an internet-facing host.
 - Read [`docs/security-and-privacy.md`](docs/security-and-privacy.md) before connecting real services or personal data.
@@ -264,3 +293,5 @@ Bookings, hospitals, and ambulances live in PostgreSQL. Auth state (users, sessi
 - [`docs/project-notes.md`](docs/project-notes.md) — progress notes
 - [`docs/internship-onboarding.md`](docs/internship-onboarding.md) — onboarding checklist
 - [`docs/security-and-privacy.md`](docs/security-and-privacy.md) — security and privacy guidance
+- [`docs/facility-directory-capability-map.md`](docs/facility-directory-capability-map.md) — directory scope and capability mapping
+- [`docs/facility-directory-spec.md`](docs/facility-directory-spec.md) — data model and API behaviour
