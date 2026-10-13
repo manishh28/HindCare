@@ -97,11 +97,12 @@ The public **Find Care** section is an external discovery directory for hospital
 - Search matches both the actual PIN extracted from a listing address and the source dataset PIN. This preserves results when an external source file contains nearby facilities with a different address PIN.
 - Pharmacies, medical stores, labs, and diagnostic centres are excluded from public care search results.
 
-To enable it on a database, run the migration and then import the approved JSON dataset:
+To enable it on a database, run the migrations in order and then import the approved JSON dataset:
 
 ```powershell
 # Run this in the PostgreSQL/Supabase SQL editor first.
 # database/migrations/004_facility_directory.sql
+# database/migrations/005_supabase_security_and_indexes.sql
 
 # Generate a SQL import file from a directory of six-digit-PIN JSON files.
 node scripts/export-facility-directory-sql.js "C:\path\to\facility-json" facility-directory-import.sql
